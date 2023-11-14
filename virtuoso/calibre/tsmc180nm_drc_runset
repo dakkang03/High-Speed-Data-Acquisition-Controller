@@ -1,0 +1,19 @@
+*drcRulesFile: /research/ece/lnis-teaching/Designkits/tsmc180nm/pdk/Calibre/drc/DRC_Calibre_0.18um_0.16um_0.152um_LO_MM_RF_1.5V_1.8V_2.5V_3.3V_5V_215a/CLM18_LM16_LM152_6M.215a
+*drcRunDir: $PWD/calibre/drc 
+*drcLayoutPaths: soc_top.calibre.db
+*drcLayoutPrimary: soc_top
+*drcLayoutLibrary: soc_top
+*drcLayoutView: layout
+*drcLayoutGetFromViewer: 1
+*drcResultsFile: soc_top.drc.results
+*drcRHDBFile: soc_top.rhdb
+*drcSummaryFile: soc_top.drc.summary
+*drcActiveRecipe: Checks selected in the rules file (Modified)
+*drcUserRecipes: {{Checks selected in the rules file (Modified)} {{group_unselect[1]} all {group_select[1]} rule_file {check_unselect[1]} DRM.R.1 {group_unselect[2]} density}}
+*drcDFMDefaultsResultsFile: soc_top.dfmDefaults.db
+*cmnSlaveHosts: {use {}} {hostName {}} {cpuCount {}} {a32a64 {}} {rsh {}} {maxMem {}} {workingDir {}} {layerDir {}} {mgcLibPath {}} {launchName {}}
+*cmnLSFSlaveTbl: {use 1} {totalCpus 1} {minCpus 1} {architecture {{}}} {minMemory {{}}} {resourceOptions {{}}} {submitOptions {{}}}
+*cmnGridSlaveTbl: {use 1} {totalCpus 1} {minCpus 1} {architecture {{}}} {minMemory {{}}} {resourceOptions {{}}} {submitOptions {{}}}
+*cmnFDILayoutLibrary: soc_top
+*cmnFDILayoutView: layout
+*cmnFDIDEFLayoutPath: soc_top.def
