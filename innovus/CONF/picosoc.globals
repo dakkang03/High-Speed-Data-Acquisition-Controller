@@ -9,14 +9,16 @@
 # Version 1.1
 #
 
+
+
 set init_lef_file { /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/tech.lef \
                     /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/sclib_tsmc180.lef \
                     /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/padlib_tsmc180.lef \
                     /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/sclib_tsmc180_antenna.lef \
-                    /mnt/nas/users/boston/RA1SHD_RD/RA1SHD_RD.vclef \
-                    /mnt/nas/users/boston/RA1SHD_RD/RA1SHD_RD_ant.lef \
-                    /mnt/nas/users/boston/RF2SH/RF2SH.vclef \
-                    /mnt/nas/users/boston/RF2SH/RF2SH_ant.lef }
+                    /research/ece/lnis-teaching/Designkits/tsmc180nm/arm_ip/RA1SHD_RD/RA1SHD_RD.vclef \
+                    /research/ece/lnis-teaching/Designkits/tsmc180nm/arm_ip/RA1SHD_RD/RA1SHD_RD_ant.lef \
+                    /research/ece/lnis-teaching/Designkits/tsmc180nm/arm_ip/RF2SH/RF2SH.vclef \
+                    /research/ece/lnis-teaching/Designkits/tsmc180nm/arm_ip/RF2SH/RF2SH_ant.lef }
 
 set init_mmmc_file {}
 
