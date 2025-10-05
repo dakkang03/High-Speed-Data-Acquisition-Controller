@@ -289,7 +289,7 @@ always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         for (int i = 0; i < 32; i++) config_registers[i] <= 32'h0;
         config_registers[0] <= 32'h0000_0001;  // Enable
-        config_registers[1] <= 32'h0000_00FF;  // All channels
+        config_registers[1] <= 32'h0000_FFFF;  // All channels
         config_registers[2] <= 32'h0000_0000;  // Round-robin mode
         for (int i = 0; i < 8; i++) begin
             config_registers[8+i] <= 32'h0000_0002;   // Default priority
