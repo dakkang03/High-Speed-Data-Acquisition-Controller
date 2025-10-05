@@ -1,6 +1,6 @@
 # High-Speed Data Acquisition Controller
 
-**VLSI Design Project | Fall 2024**
+**VLSI Design Project**
 
 A fully synthesizable, multi-channel data acquisition system designed for real-time biomedical signal processing with advanced arbitration, buffering, and trigger detection capabilities.
 
