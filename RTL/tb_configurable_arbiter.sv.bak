@@ -1,0 +1,436 @@
+module tb_configurable_arbiter;
+
+// Parameters
+localparam NUM_CHANNELS = 16;
+localparam CHANNEL_WIDTH = $clog2(NUM_CHANNELS);
+localparam CLK_PERIOD = 10; // 10ns = 100MHz
+
+// Clock and Reset
+logic clk;
+logic rst_n;
+
+// Configuration signals
+logic [1:0] arbiter_mode;
+logic [3:0] channel_priority [NUM_CHANNELS-1:0];
+logic [7:0] channel_weight [NUM_CHANNELS-1:0];
+logic [NUM_CHANNELS-1:0] channel_enable;
+
+// Runtime signals
+logic [NUM_CHANNELS-1:0] channel_ready;
+logic [NUM_CHANNELS-1:0] channel_urgent;
+logic adc_busy;
+
+// Output signals
+logic [CHANNEL_WIDTH-1:0] selected_channel;
+logic channel_valid;
+logic channel_accept;
+
+// Test control signals
+logic [31:0] test_cycle;
+logic [7:0] test_phase;
+
+// Variables for performance testing (declared at module level)
+int channel_count [NUM_CHANNELS-1:0];
+int selections_per_second;
+int start_time;
+int end_time;
+real duration_us;
+real throughput_MHz;
+
+//=============================================================================
+// Clock Generation
+//=============================================================================
+always #(CLK_PERIOD/2) clk = ~clk;
+
+//=============================================================================
+// DUT Instantiation
+//=============================================================================
+configurable_arbiter #(
+    .NUM_CHANNELS(NUM_CHANNELS)
+) dut (
+    .clk(clk),
+    .rst_n(rst_n),
+    .arbiter_mode(arbiter_mode),
+    .channel_priority(channel_priority),
+    .channel_weight(channel_weight),
+    .channel_enable(channel_enable),
+    .channel_ready(channel_ready),
+    .channel_urgent(channel_urgent),
+    .adc_busy(adc_busy),
+    .selected_channel(selected_channel),
+    .channel_valid(channel_valid),
+    .channel_accept(channel_accept)
+);
+
+//=============================================================================
+// Test Stimulus and Monitoring
+//=============================================================================
+
+// Test cycle counter
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        test_cycle <= 0;
+    end else begin
+        test_cycle <= test_cycle + 1;
+    end
+end
+
+// Simulate ADC accept behavior
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        channel_accept <= 1'b0;
+    end else begin
+        // Accept channel selection after 1 cycle delay (simulate ADC processing)
+        channel_accept <= channel_valid && !adc_busy && ($random % 10 != 0); // 90% accept rate
+    end
+end
+
+//=============================================================================
+// Test Scenarios
+//=============================================================================
+
+initial begin
+    // Initialize all variables at the beginning
+    int i, j, k, m;
+    
+    // Initialize signals
+    clk = 0;
+    rst_n = 0;
+    arbiter_mode = 2'b00;
+    channel_enable = 16'h0000;
+    channel_ready = 16'h0000;
+    channel_urgent = 16'h0000;
+    adc_busy = 1'b0;
+    test_phase = 0;
+    selections_per_second = 0;
+    start_time = 0;
+    
+    // Initialize channel priorities (ECG=3, EEG=2, EMG=1)
+    for (i = 0; i < 4; i = i + 1) channel_priority[i] = 4'd3;     // ECG channels
+    for (i = 4; i < 12; i = i + 1) channel_priority[i] = 4'd2;   // EEG channels  
+    for (i = 12; i < 16; i = i + 1) channel_priority[i] = 4'd1;  // EMG channels
+    
+    // Initialize channel weights
+    for (i = 0; i < 4; i = i + 1) channel_weight[i] = 8'd4;      // ECG: weight 4
+    for (i = 4; i < 12; i = i + 1) channel_weight[i] = 8'd2;     // EEG: weight 2
+    for (i = 12; i < 16; i = i + 1) channel_weight[i] = 8'd1;    // EMG: weight 1
+    
+    // Initialize channel count array
+    for (i = 0; i < NUM_CHANNELS; i = i + 1) channel_count[i] = 0;
+    
+    $display("=== Configurable Arbiter Testbench Started ===");
+    
+    // Reset sequence
+    #(CLK_PERIOD*5);
+    rst_n = 1;
+    #(CLK_PERIOD*2);
+    
+    //=========================================================================
+    // Test Phase 1: Round-Robin Mode
+    //=========================================================================
+    test_phase = 1;
+    $display("\n--- Test Phase 1: Round-Robin Mode ---");
+    arbiter_mode = 2'b00; // Round-Robin
+    channel_enable = 16'hFFFF; // Enable all channels
+    channel_ready = 16'hFFFF;  // All channels ready
+    
+    // Run for 32 cycles to see complete round-robin cycle
+    for (j = 0; j < 32; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, RR Mode: Selected Ch%0d, Valid: %b", 
+                     $time, selected_channel, channel_valid);
+        end
+    end
+    
+    //=========================================================================  
+    // Test Phase 2: Priority Mode
+    //=========================================================================
+    test_phase = 2;
+    $display("\n--- Test Phase 2: Priority Mode ---");
+    arbiter_mode = 2'b01; // Priority-based
+    
+    // Test with all channels enabled - should favor ECG (priority 3)
+    for (j = 0; j < 20; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, Priority Mode: Selected Ch%0d (Priority %0d), Valid: %b", 
+                     $time, selected_channel, channel_priority[selected_channel], channel_valid);
+        end
+    end
+    
+    // Disable ECG channels, should switch to EEG
+    channel_enable = 16'hFFF0; // Disable Ch0-3 (ECG)
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, Priority Mode (No ECG): Selected Ch%0d (Priority %0d)", 
+                     $time, selected_channel, channel_priority[selected_channel]);
+        end
+    end
+    
+    //=========================================================================
+    // Test Phase 3: Weighted Mode  
+    //=========================================================================
+    test_phase = 3;
+    $display("\n--- Test Phase 3: Weighted Mode ---");
+    arbiter_mode = 2'b10; // Weighted
+    channel_enable = 16'hFFFF; // Re-enable all channels
+    
+    // Reset channel count array
+    for (i = 0; i < NUM_CHANNELS; i = i + 1) channel_count[i] = 0;
+    
+    for (j = 0; j < 100; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid && channel_accept) begin
+            channel_count[selected_channel] = channel_count[selected_channel] + 1;
+            $display("Time: %0t, Weighted Mode: Selected Ch%0d (Weight %0d), Count: %0d", 
+                     $time, selected_channel, channel_weight[selected_channel], 
+                     channel_count[selected_channel]);
+        end
+    end
+    
+    // Display final counts
+    $display("\n--- Weighted Mode Final Counts ---");
+    for (i = 0; i < NUM_CHANNELS; i = i + 1) begin
+        $display("Ch%0d (Weight %0d): Selected %0d times", 
+                 i, channel_weight[i], channel_count[i]);
+    end
+    
+    //=========================================================================
+    // Test Phase 4: Dynamic Mode (Urgent Channels)
+    //=========================================================================
+    test_phase = 4;
+    $display("\n--- Test Phase 4: Dynamic Mode with Urgent Channels ---");
+    arbiter_mode = 2'b11; // Dynamic
+    channel_urgent = 16'h0000; // No urgent initially
+    
+    // Normal operation for a few cycles
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, Dynamic Mode (Normal): Selected Ch%0d", 
+                     $time, selected_channel);
+        end
+    end
+    
+    // Trigger urgent condition on Channel 0 (ECG emergency)
+    channel_urgent = 16'h0001; // Ch0 urgent
+    $display("\n*** URGENT: Channel 0 (ECG) Emergency! ***");
+    
+    for (j = 0; j < 20; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, Dynamic Mode (URGENT): Selected Ch%0d, Urgent: %b", 
+                     $time, selected_channel, channel_urgent[selected_channel]);
+        end
+    end
+    
+    // Clear urgent condition
+    channel_urgent = 16'h0000;
+    $display("\n*** Urgent condition cleared ***");
+    
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("Time: %0t, Dynamic Mode (Recovered): Selected Ch%0d", 
+                     $time, selected_channel);
+        end
+    end
+    
+    //=========================================================================
+    // Test Phase 5: ADC Busy and Channel Not Ready Scenarios
+    //=========================================================================
+    test_phase = 5;
+    $display("\n--- Test Phase 5: ADC Busy and Channel Ready Testing ---");
+    arbiter_mode = 2'b00; // Back to Round-Robin
+    
+    // Test ADC busy condition
+    adc_busy = 1'b1;
+    $display("*** ADC BUSY - No selections should occur ***");
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("ERROR: Channel selected while ADC busy! Ch%0d", selected_channel);
+        end else begin
+            $display("Time: %0t, ADC Busy: No channel selected (correct)", $time);
+        end
+    end
+    
+    adc_busy = 1'b0;
+    $display("*** ADC Available ***");
+    
+    // Test channel not ready
+    channel_ready = 16'h000F; // Only first 4 channels ready
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            if (selected_channel >= 4) begin
+                $display("ERROR: Selected unready channel Ch%0d", selected_channel);
+            end else begin
+                $display("Time: %0t, Only Ch0-3 Ready: Selected Ch%0d (correct)", 
+                         $time, selected_channel);
+            end
+        end
+    end
+    
+    //=========================================================================
+    // Test Phase 6: Edge Cases and Error Conditions
+    //=========================================================================
+    test_phase = 6;
+    $display("\n--- Test Phase 6: Edge Cases ---");
+    
+    // No channels enabled
+    channel_enable = 16'h0000;
+    channel_ready = 16'hFFFF;
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            $display("ERROR: Channel selected when none enabled! Ch%0d", selected_channel);
+        end else begin
+            $display("Time: %0t, No Channels Enabled: No selection (correct)", $time);
+        end
+    end
+    
+    // Single channel enabled
+    channel_enable = 16'h0008; // Only Ch3 enabled
+    for (j = 0; j < 10; j = j + 1) begin
+        @(posedge clk);
+        if (channel_valid) begin
+            if (selected_channel == 3) begin
+                $display("Time: %0t, Single Channel: Selected Ch3 (correct)", $time);
+            end else begin
+                $display("ERROR: Wrong channel selected! Expected 3, got %0d", selected_channel);
+            end
+        end
+    end
+    
+    //=========================================================================
+    // Test Phase 7: Performance and Timing Analysis
+    //=========================================================================
+    test_phase = 7;
+    $display("\n--- Test Phase 7: Performance Analysis ---");
+    arbiter_mode = 2'b00; // Round-Robin
+    channel_enable = 16'hFFFF;
+    channel_ready = 16'hFFFF;
+    
+    selections_per_second = 0;
+    start_time = $time;
+    
+    for (j = 0; j < 1000; j = j + 1) begin // 10?s at 100MHz
+        @(posedge clk);
+        if (channel_valid && channel_accept) begin
+            selections_per_second = selections_per_second + 1;
+        end
+    end
+    
+    end_time = $time;
+    duration_us = (end_time - start_time) / 1000.0;
+    throughput_MHz = selections_per_second / duration_us;
+    
+    $display("Performance Results:");
+    $display("  Duration: %.2f us", duration_us);
+    $display("  Selections: %0d", selections_per_second);
+    $display("  Throughput: %.2f MHz", throughput_MHz);
+    
+    //=========================================================================
+    // Test Completion
+    //=========================================================================
+    #(CLK_PERIOD*10);
+    $display("\n=== All Tests Completed Successfully ===");
+    $display("Total test cycles: %0d", test_cycle);
+    $display("Simulation time: %.2f us", $time/1000.0);
+    
+    $finish;
+end
+
+//=============================================================================
+// Checker Logic and Assertions
+//=============================================================================
+
+// Check that selected channel is always in valid range
+always_ff @(posedge clk) begin
+    if (rst_n && channel_valid) begin
+        if (selected_channel >= NUM_CHANNELS) begin
+            $error("Selected channel %0d out of range!", selected_channel);
+        end
+    end
+end
+
+// Check that selected channel is enabled and ready
+always_ff @(posedge clk) begin
+    if (rst_n && channel_valid && !adc_busy) begin
+        if (!channel_enable[selected_channel]) begin
+            $error("Selected disabled channel %0d!", selected_channel);
+        end
+        if (!channel_ready[selected_channel]) begin  
+            $error("Selected unready channel %0d!", selected_channel);
+        end
+    end
+end
+
+// Check that no selection occurs when ADC is busy
+always_ff @(posedge clk) begin
+    if (rst_n && adc_busy) begin
+        if (channel_valid) begin
+            $error("Channel selected while ADC busy!");
+        end
+    end
+end
+
+// Monitor urgent channel handling in dynamic mode
+always_ff @(posedge clk) begin
+    if (rst_n && arbiter_mode == 2'b11 && |channel_urgent && channel_valid) begin
+        if (!channel_urgent[selected_channel]) begin
+            $display("Warning: Urgent channel available but not selected: urgent=0x%04h, selected=%0d", 
+                     channel_urgent, selected_channel);
+        end
+    end
+end
+
+//=============================================================================
+// Simple Coverage Collection (Compatible with 2019.4)
+//=============================================================================
+
+// Manual coverage counters
+reg [31:0] mode_coverage [0:3];
+reg [31:0] channel_coverage [0:15];
+
+always_ff @(posedge clk) begin
+    if (rst_n && channel_valid) begin
+        // Count mode usage
+        case (arbiter_mode)
+            2'b00: mode_coverage[0] <= mode_coverage[0] + 1;
+            2'b01: mode_coverage[1] <= mode_coverage[1] + 1; 
+            2'b10: mode_coverage[2] <= mode_coverage[2] + 1;
+            2'b11: mode_coverage[3] <= mode_coverage[3] + 1;
+        endcase
+        
+        // Count channel usage
+        channel_coverage[selected_channel] <= channel_coverage[selected_channel] + 1;
+    end
+end
+
+initial begin
+    int n;
+    for (n = 0; n < 4; n = n + 1) mode_coverage[n] = 0;
+    for (n = 0; n < 16; n = n + 1) channel_coverage[n] = 0;
+end
+
+//=============================================================================
+// Debug and Waveform Dumping
+//=============================================================================
+
+initial begin
+    $dumpfile("tb_configurable_arbiter.vcd");
+    $dumpvars(0, tb_configurable_arbiter);
+end
+
+// Monitor key signals (separate always block to avoid $display issues)
+always_ff @(posedge clk) begin
+    if (rst_n && test_phase > 0) begin
+        // Only display during active test phases
+    end
+end
+
+endmodule

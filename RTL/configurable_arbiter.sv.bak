@@ -1,0 +1,178 @@
+module configurable_arbiter #(
+    parameter NUM_CHANNELS = 16,
+    parameter CHANNEL_WIDTH = $clog2(NUM_CHANNELS)
+)(
+    input logic clk,
+    input logic rst_n,
+    
+    // Configuration interface
+    input logic [1:0] arbiter_mode,  // 0:RR, 1:Priority, 2:Weighted, 3:Dynamic
+    input logic [3:0] channel_priority [NUM_CHANNELS-1:0],
+    input logic [7:0] channel_weight   [NUM_CHANNELS-1:0],
+    input logic [NUM_CHANNELS-1:0] channel_enable,
+    
+    // Runtime status
+    input logic [NUM_CHANNELS-1:0] channel_ready,
+    input logic [NUM_CHANNELS-1:0] channel_urgent,
+    input logic adc_busy,
+    
+    // Output
+    output logic [CHANNEL_WIDTH-1:0] selected_channel,
+    output logic channel_valid,
+    input logic channel_accept
+);
+
+// Internal registers
+logic [CHANNEL_WIDTH-1:0] rr_counter;
+logic [7:0] weight_accumulator [NUM_CHANNELS-1:0];
+logic [CHANNEL_WIDTH-1:0] next_channel;
+logic next_valid;
+
+// Round-Robin arbiter
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        rr_counter <= 0;
+    end else if (channel_accept && arbiter_mode == 2'b00) begin
+        rr_counter <= (rr_counter == NUM_CHANNELS-1) ? 0 : rr_counter + 1;
+    end
+end
+
+// Find next enabled channel for Round-Robin
+function automatic [CHANNEL_WIDTH-1:0] find_next_rr_channel(
+    input [CHANNEL_WIDTH-1:0] start,
+    input [NUM_CHANNELS-1:0] enable_mask,
+    input [NUM_CHANNELS-1:0] ready_mask
+);
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+        int ch_idx = (start + i) % NUM_CHANNELS;
+        if (enable_mask[ch_idx] && ready_mask[ch_idx]) begin
+            return ch_idx;
+        end
+    end
+    return start; // fallback
+endfunction
+
+// Priority encoder for highest priority channel
+function automatic [CHANNEL_WIDTH-1:0] find_highest_priority(
+    input [3:0] priorities [NUM_CHANNELS-1:0],
+    input [NUM_CHANNELS-1:0] enable_mask,
+    input [NUM_CHANNELS-1:0] ready_mask
+);
+    logic [3:0] max_priority = 0;
+    logic [CHANNEL_WIDTH-1:0] max_channel = 0;
+    
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+        if (enable_mask[i] && ready_mask[i] && priorities[i] > max_priority) begin
+            max_priority = priorities[i];
+            max_channel = i;
+        end
+    end
+    return max_channel;
+endfunction
+
+// Weighted arbiter logic
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            weight_accumulator[i] <= 0;
+        end
+    end else begin
+        // Accumulate weights for enabled channels
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            if (channel_enable[i]) begin
+                weight_accumulator[i] <= weight_accumulator[i] + channel_weight[i];
+            end
+        end
+        
+        // Reset selected channel's accumulator
+        if (channel_accept && arbiter_mode == 2'b10) begin
+            weight_accumulator[selected_channel] <= 0;
+        end
+    end
+end
+
+// Find channel with maximum weight
+function automatic [CHANNEL_WIDTH-1:0] find_max_weight_channel(
+    input [7:0] weights [NUM_CHANNELS-1:0],
+    input [NUM_CHANNELS-1:0] enable_mask,
+    input [NUM_CHANNELS-1:0] ready_mask
+);
+    logic [7:0] max_weight = 0;
+    logic [CHANNEL_WIDTH-1:0] max_channel = 0;
+    
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+        if (enable_mask[i] && ready_mask[i] && weights[i] > max_weight) begin
+            max_weight = weights[i];
+            max_channel = i;
+        end
+    end
+    return max_channel;
+endfunction
+
+// Main arbitration logic
+always_comb begin
+    case (arbiter_mode)
+        2'b00: begin // Round-Robin
+            next_channel = find_next_rr_channel(rr_counter, channel_enable, channel_ready);
+            next_valid = channel_enable[next_channel] && channel_ready[next_channel];
+        end
+        
+        2'b01: begin // Priority-based
+            next_channel = find_highest_priority(channel_priority, channel_enable, channel_ready);
+            next_valid = channel_enable[next_channel] && channel_ready[next_channel];
+        end
+        
+        2'b10: begin // Weighted
+            next_channel = find_max_weight_channel(weight_accumulator, channel_enable, channel_ready);
+            next_valid = channel_enable[next_channel] && channel_ready[next_channel];
+        end
+        
+        2'b11: begin // Dynamic (urgent first, then weighted)
+            if (|(channel_urgent & channel_enable & channel_ready)) begin
+                // Find first urgent channel
+                next_channel = 0;
+                next_valid = 1'b0;
+                for (int i = 0; i < NUM_CHANNELS; i++) begin
+                    if (channel_urgent[i] && channel_enable[i] && channel_ready[i] && !next_valid) begin
+                        next_channel = i;
+                        next_valid = 1'b1;
+                    end
+                end
+            end else begin
+                // Fall back to weighted
+                next_channel = find_max_weight_channel(weight_accumulator, channel_enable, channel_ready);
+                next_valid = channel_enable[next_channel] && channel_ready[next_channel];
+            end
+        end
+        
+        default: begin
+            next_channel = 0;
+            next_valid = 1'b0;
+        end
+    endcase
+end
+
+// Output assignment
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        selected_channel <= 0;
+        channel_valid <= 1'b0;
+    end else if (!adc_busy) begin
+        selected_channel <= next_channel;
+        channel_valid <= next_valid;
+    end else begin
+        channel_valid <= 1'b0; // Can't select when ADC busy
+    end
+end
+
+// Debug and monitoring
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (channel_valid && channel_accept) begin
+        $display("Time: %0t, Mode: %0d, Selected Ch: %0d, RR_counter: %0d", 
+                 $time, arbiter_mode, selected_channel, rr_counter);
+    end
+end
+`endif
+
+endmodule

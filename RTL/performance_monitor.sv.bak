@@ -1,0 +1,331 @@
+module performance_monitor #(
+    parameter NUM_CHANNELS = 16,
+    parameter CHANNEL_WIDTH = $clog2(NUM_CHANNELS),
+    parameter COUNTER_WIDTH = 32,
+    parameter TIMESTAMP_WIDTH = 32
+)(
+    input logic clk,
+    input logic rst_n,
+    
+    // Data flow monitoring
+    input logic sample_valid,
+    input logic [CHANNEL_WIDTH-1:0] sample_channel,
+    input logic [TIMESTAMP_WIDTH-1:0] sample_timestamp,
+    
+    // FIFO status monitoring
+    input logic fifo_wr_en,
+    input logic fifo_rd_en,
+    input logic [9:0] fifo_count,      // Current FIFO usage
+    input logic [9:0] fifo_depth,     // FIFO capacity
+    input logic fifo_full,
+    input logic fifo_empty,
+    
+    // Trigger monitoring
+    input logic trigger_detected,
+    input logic [CHANNEL_WIDTH-1:0] trigger_channel,
+    input logic [7:0] trigger_confidence,
+    
+    // ADC performance monitoring
+    input logic adc_conversion_start,
+    input logic adc_conversion_done,
+    input logic [CHANNEL_WIDTH-1:0] adc_channel,
+    
+    // Performance metrics output
+    output logic [31:0] throughput_sps,        // Samples per second
+    output logic [31:0] avg_latency_ns,        // Average latency in nanoseconds
+    output logic [31:0] max_latency_ns,        // Maximum latency observed
+    output logic [7:0]  fifo_utilization_pct,  // FIFO utilization percentage
+    output logic [15:0] trigger_rate_ppm,      // Triggers per million samples
+    
+    // Status and warnings
+    output logic [7:0] warning_flags,
+    output logic [31:0] debug_counters
+);
+
+// Warning flag definitions
+localparam WARN_LOW_THROUGHPUT    = 0;
+localparam WARN_HIGH_LATENCY      = 1; 
+localparam WARN_HIGH_FIFO_USAGE   = 2;
+localparam WARN_FIFO_OVERFLOW     = 3;
+localparam WARN_HIGH_TRIGGER_RATE = 4;
+localparam WARN_LOW_TRIGGER_RATE  = 5;
+localparam WARN_ADC_TIMEOUT       = 6;
+localparam WARN_SYSTEM_OVERLOAD   = 7;
+
+// Throughput measurement (1-second rolling window)
+logic [31:0] throughput_counter;
+logic [31:0] throughput_window_counter;
+logic [31:0] timestamp_1sec_ago;
+logic [31:0] samples_in_window;
+
+// Latency measurement per channel
+logic [TIMESTAMP_WIDTH-1:0] sample_start_time [NUM_CHANNELS-1:0];
+logic [31:0] latency_sum [NUM_CHANNELS-1:0];
+logic [31:0] latency_count [NUM_CHANNELS-1:0];
+logic [31:0] latency_max [NUM_CHANNELS-1:0];
+logic [31:0] current_latency;
+
+// FIFO utilization tracking
+logic [31:0] fifo_util_sum;
+logic [15:0] fifo_util_samples;
+logic [7:0] fifo_util_current;
+logic [7:0] fifo_util_max;
+
+// Trigger statistics
+logic [31:0] trigger_count_total;
+logic [31:0] trigger_count_window;
+logic [31:0] sample_count_total;
+logic [15:0] trigger_rate_current;
+
+// ADC performance tracking
+logic [31:0] adc_conversion_time [NUM_CHANNELS-1:0];
+logic [TIMESTAMP_WIDTH-1:0] adc_start_time [NUM_CHANNELS-1:0];
+logic [31:0] adc_timeout_count;
+
+// System clock frequency for time calculations (assumed 100MHz)
+localparam CLK_FREQ_HZ = 100_000_000;
+localparam NS_PER_CYCLE = 1_000_000_000 / CLK_FREQ_HZ; // 10ns per cycle
+
+// Throughput measurement logic
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        throughput_counter <= 0;
+        throughput_window_counter <= 0;
+        samples_in_window <= 0;
+        timestamp_1sec_ago <= 0;
+    end else begin
+        // Count total samples
+        if (sample_valid) begin
+            throughput_counter <= throughput_counter + 1;
+        end
+        
+        // 1-second rolling window calculation
+        if (sample_timestamp >= timestamp_1sec_ago + CLK_FREQ_HZ) begin
+            throughput_sps <= samples_in_window;
+            samples_in_window <= 0;
+            timestamp_1sec_ago <= sample_timestamp;
+            throughput_window_counter <= throughput_window_counter + 1;
+        end else if (sample_valid) begin
+            samples_in_window <= samples_in_window + 1;
+        end
+    end
+end
+
+// Latency measurement logic
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            sample_start_time[i] <= 0;
+            latency_sum[i] <= 0;
+            latency_count[i] <= 0;
+            latency_max[i] <= 0;
+        end
+        current_latency <= 0;
+    end else begin
+        // Record sample start time
+        if (sample_valid && sample_channel < NUM_CHANNELS) begin
+            sample_start_time[sample_channel] <= sample_timestamp;
+        end
+        
+        // Calculate latency when data is read from FIFO
+        if (fifo_rd_en) begin
+            // Assume FIFO data includes channel info (simplified)
+            automatic logic [CHANNEL_WIDTH-1:0] read_channel;
+            read_channel = sample_channel; // Would come from FIFO data
+            
+            if (sample_start_time[read_channel] != 0) begin
+                current_latency = (sample_timestamp - sample_start_time[read_channel]) * NS_PER_CYCLE;
+                latency_sum[read_channel] <= latency_sum[read_channel] + current_latency;
+                latency_count[read_channel] <= latency_count[read_channel] + 1;
+                
+                if (current_latency > latency_max[read_channel]) begin
+                    latency_max[read_channel] <= current_latency;
+                end
+                
+                sample_start_time[read_channel] <= 0; // Reset
+            end
+        end
+    end
+end
+
+// Calculate average latency across all channels
+logic [31:0] total_latency_sum, total_latency_count, global_max_latency;
+always_comb begin
+    total_latency_sum = 0;
+    total_latency_count = 0;
+    global_max_latency = 0;
+    
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+        total_latency_sum = total_latency_sum + latency_sum[i];
+        total_latency_count = total_latency_count + latency_count[i];
+        if (latency_max[i] > global_max_latency) begin
+            global_max_latency = latency_max[i];
+        end
+    end
+    
+    if (total_latency_count > 0) begin
+        avg_latency_ns = total_latency_sum / total_latency_count;
+    end else begin
+        avg_latency_ns = 0;
+    end
+    
+    max_latency_ns = global_max_latency;
+end
+
+// FIFO utilization tracking
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        fifo_util_sum <= 0;
+        fifo_util_samples <= 0;
+        fifo_util_current <= 0;
+        fifo_util_max <= 0;
+    end else begin
+        // Calculate current utilization percentage
+        if (fifo_depth > 0) begin
+            fifo_util_current <= (fifo_count * 100) / fifo_depth;
+        end else begin
+            fifo_util_current <= 0;
+        end
+        
+        // Track running average
+        fifo_util_sum <= fifo_util_sum + fifo_util_current;
+        fifo_util_samples <= fifo_util_samples + 1;
+        
+        // Track maximum utilization
+        if (fifo_util_current > fifo_util_max) begin
+            fifo_util_max <= fifo_util_current;
+        end
+        
+        // Output average utilization
+        if (fifo_util_samples > 0) begin
+            fifo_utilization_pct <= fifo_util_sum / fifo_util_samples;
+        end
+    end
+end
+
+// Trigger rate monitoring
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        trigger_count_total <= 0;
+        trigger_count_window <= 0;
+        sample_count_total <= 0;
+        trigger_rate_current <= 0;
+    end else begin
+        // Count triggers and samples
+        if (trigger_detected) begin
+            trigger_count_total <= trigger_count_total + 1;
+            trigger_count_window <= trigger_count_window + 1;
+        end
+        
+        if (sample_valid) begin
+            sample_count_total <= sample_count_total + 1;
+        end
+        
+        // Calculate trigger rate every 1000 samples  
+        if (sample_count_total % 1000 == 0 && sample_count_total > 0) begin
+            // Triggers per million samples
+            trigger_rate_current <= (trigger_count_window * 1000);
+            trigger_count_window <= 0;
+        end
+        
+        trigger_rate_ppm <= trigger_rate_current;
+    end
+end
+
+// ADC performance monitoring
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            adc_conversion_time[i] <= 0;
+            adc_start_time[i] <= 0;
+        end
+        adc_timeout_count <= 0;
+    end else begin
+        // Record ADC start time
+        if (adc_conversion_start && adc_channel < NUM_CHANNELS) begin
+            adc_start_time[adc_channel] <= sample_timestamp;
+        end
+        
+        // Calculate conversion time
+        if (adc_conversion_done && adc_channel < NUM_CHANNELS) begin
+            if (adc_start_time[adc_channel] != 0) begin
+                adc_conversion_time[adc_channel] <= sample_timestamp - adc_start_time[adc_channel];
+                adc_start_time[adc_channel] <= 0;
+            end
+        end
+        
+        // Check for ADC timeouts (>1ms conversion time)
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            if (adc_start_time[i] != 0 && 
+                (sample_timestamp - adc_start_time[i]) > (CLK_FREQ_HZ / 1000)) begin
+                adc_timeout_count <= adc_timeout_count + 1;
+                adc_start_time[i] <= 0; // Reset to avoid repeated counting
+            end
+        end
+    end
+end
+
+// Warning flag generation
+always_comb begin
+    warning_flags = 8'b0;
+    
+    // Low throughput warning (< 90% of expected 16kHz)
+    if (throughput_sps < 14400) begin
+        warning_flags[WARN_LOW_THROUGHPUT] = 1'b1;
+    end
+    
+    // High latency warning (> 1ms average)
+    if (avg_latency_ns > 1_000_000) begin
+        warning_flags[WARN_HIGH_LATENCY] = 1'b1;
+    end
+    
+    // High FIFO usage warning (> 80%)
+    if (fifo_utilization_pct > 80) begin
+        warning_flags[WARN_HIGH_FIFO_USAGE] = 1'b1;
+    end
+    
+    // FIFO overflow warning
+    if (fifo_full && fifo_wr_en) begin
+        warning_flags[WARN_FIFO_OVERFLOW] = 1'b1;
+    end
+    
+    // Abnormal trigger rate warnings
+    if (trigger_rate_ppm > 100_000) begin // >10% trigger rate
+        warning_flags[WARN_HIGH_TRIGGER_RATE] = 1'b1;
+    end else if (trigger_rate_ppm < 100) begin // <0.01% trigger rate  
+        warning_flags[WARN_LOW_TRIGGER_RATE] = 1'b1;
+    end
+    
+    // ADC timeout warning
+    if (adc_timeout_count > 0) begin
+        warning_flags[WARN_ADC_TIMEOUT] = 1'b1;
+    end
+    
+    // System overload (multiple warnings)
+    if (warning_flags[6:0] >= 3) begin
+        warning_flags[WARN_SYSTEM_OVERLOAD] = 1'b1;
+    end
+end
+
+// Debug counters for detailed analysis
+assign debug_counters = {
+    throughput_counter[15:0],        // [31:16] Total sample count
+    trigger_count_total[15:0]        // [15:0] Total trigger count
+};
+
+// Performance reporting for simulation
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (throughput_window_counter > 0 && throughput_window_counter % 10 == 0) begin
+        $display("Time: %0t, PERF: Throughput=%0d SPS, Avg_Latency=%0d ns, FIFO_Util=%0d%%, Triggers=%0d ppm", 
+                 $time, throughput_sps, avg_latency_ns, fifo_utilization_pct, trigger_rate_ppm);
+    end
+    
+    if (|warning_flags) begin
+        $display("Time: %0t, WARNING: Flags=0x%02h, Details: Throughput=%b Latency=%b FIFO=%b", 
+                 $time, warning_flags, warning_flags[0], warning_flags[1], warning_flags[2]);
+    end
+end
+`endif
+
+endmodule

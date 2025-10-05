@@ -1,0 +1,245 @@
+module tb_hierarchical_fifo_system;
+
+localparam DATA_WIDTH = 16;
+localparam L1_DEPTH = 32;
+localparam L2_DEPTH = 128;
+localparam L3_DEPTH = 512;
+localparam CLK_PERIOD = 10;
+
+logic clk, rst_n;
+logic [1:0] fifo_mode;
+logic [7:0] watermark_l1, watermark_l2, watermark_l3;
+logic [DATA_WIDTH-1:0] wr_data, rd_data;
+logic wr_en, rd_en, wr_full, rd_empty;
+logic [1:0] wr_level, rd_level;
+logic [31:0] fifo_status;
+logic [2:0] level_overflow;
+logic backpressure_active;
+
+int errors;
+
+always #(CLK_PERIOD/2) clk = ~clk;
+
+hierarchical_fifo_system #(
+    .DATA_WIDTH(DATA_WIDTH),
+    .L1_DEPTH(L1_DEPTH),
+    .L2_DEPTH(L2_DEPTH),
+    .L3_DEPTH(L3_DEPTH)
+) dut (.*);
+
+// Helper task to drain FIFO completely
+task drain_fifo();
+    $display("  [Draining FIFO...]");
+    while (!rd_empty) begin
+        @(posedge clk);
+        rd_en = 1;
+    end
+    @(posedge clk);
+    rd_en = 0;
+    #(CLK_PERIOD*2);
+endtask
+
+initial begin
+    int i;
+    logic [15:0] expected;
+    logic [15:0] read_val;
+    
+    clk = 0; 
+    rst_n = 0;
+    fifo_mode = 2'b10;
+    watermark_l1 = 75; 
+    watermark_l2 = 80; 
+    watermark_l3 = 90;
+    wr_data = 0; 
+    wr_en = 0; 
+    rd_en = 0;
+    errors = 0;
+    
+    $display("=== Hierarchical FIFO Test Started ===\n");
+    
+    #(CLK_PERIOD*5) rst_n = 1;
+    #(CLK_PERIOD*2);
+    
+    //=========================================================================
+    // Test 1: Basic Write/Read (20 entries)
+    //=========================================================================
+    $display("--- Test 1: Basic Write/Read (20 entries) ---");
+    
+    // Write 20
+    for (i = 0; i < 20; i = i + 1) begin
+        @(posedge clk);
+        wr_data = i;
+        wr_en = 1;
+    end
+    @(posedge clk);
+    wr_en = 0;
+    
+    #(CLK_PERIOD);
+    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
+             dut.l1_count, dut.l2_count, dut.l3_count);
+    
+    // Read 20
+    for (i = 0; i < 20; i = i + 1) begin
+        expected = i;
+        @(posedge clk);
+        rd_en = 1;
+        #1; // Small delay for combinational logic
+        read_val = rd_data;
+        
+        if (read_val !== expected) begin
+            $display("ERROR: Read[%0d] Expected %0d, got %0d", i, expected, read_val);
+            errors = errors + 1;
+        end
+    end
+    @(posedge clk);
+    rd_en = 0;
+    
+    drain_fifo();
+    $display("â Test 1 Complete\n");
+    
+    //=========================================================================
+    // Test 2: L1 Overflow â L2 Promotion
+    //=========================================================================
+    $display("--- Test 2: Fill L1 (40 entries) â Promotion to L2 ---");
+    
+    // Write 40
+    for (i = 0; i < 40; i = i + 1) begin
+        @(posedge clk);
+        wr_data = 16'h0100 + i;
+        wr_en = 1;
+    end
+    @(posedge clk);
+    wr_en = 0;
+    
+    #(CLK_PERIOD);
+    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
+             dut.l1_count, dut.l2_count, dut.l3_count);
+    
+    if (dut.l2_count > 0) begin
+        $display("â Promotion to L2 successful");
+    end else begin
+        $display("ERROR: No promotion to L2");
+        errors = errors + 1;
+    end
+    
+    drain_fifo();
+    $display("â Test 2 Complete\n");
+    
+    //=========================================================================
+    // Test 3: Large Burst â All 3 Levels
+    //=========================================================================
+    $display("--- Test 3: Large Burst (200 entries) â Use All 3 Levels ---");
+    
+    // Write 200
+    for (i = 0; i < 200; i = i + 1) begin
+        @(posedge clk);
+        wr_data = 16'h0200 + i;
+        wr_en = !wr_full;
+        if (wr_full) begin
+            $display("ERROR: FIFO full at entry %0d", i);
+            errors = errors + 1;
+            i = 200; // break
+        end
+    end
+    @(posedge clk);
+    wr_en = 0;
+    
+    #(CLK_PERIOD);
+    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
+             dut.l1_count, dut.l2_count, dut.l3_count);
+    
+    if (dut.l3_count > 0) begin
+        $display("â All 3 levels in use");
+    end else begin
+        $display("ERROR: L3 not used");
+        errors = errors + 1;
+    end
+    
+    // Read and verify first 10 only
+    $display("Verifying first 10 reads...");
+    for (i = 0; i < 10; i = i + 1) begin
+        expected = 16'h0200 + i;
+        @(posedge clk);
+        rd_en = 1;
+        @(posedge clk);
+        #1;
+        read_val = rd_data;
+        
+        if (read_val !== expected) begin
+            $display("ERROR: Read[%0d] Expected 0x%04h, got 0x%04h", i, expected, read_val);
+            errors = errors + 1;
+        end else begin
+            $display("  Read[%0d]: 0x%04h â", i, read_val);
+        end
+    end
+    rd_en = 0;
+    
+    drain_fifo();
+    $display("â Test 3 Complete\n");
+    
+    //=========================================================================
+    // Test 4: Capacity Test
+    //=========================================================================
+    $display("--- Test 4: Maximum Capacity Test ---");
+    
+    // Try to write more than capacity
+    for (i = 0; i < 700; i = i + 1) begin
+        @(posedge clk);
+        if (!wr_full) begin
+            wr_data = 16'h0400 + i;
+            wr_en = 1;
+        end else begin
+            wr_en = 0;
+            $display("FIFO full at %0d entries", i);
+            i = 700; // break
+        end
+    end
+    @(posedge clk);
+    wr_en = 0;
+    
+    #(CLK_PERIOD);
+    $display("Total Capacity: L1=%0d + L2=%0d + L3=%0d = %0d", 
+             dut.l1_count, dut.l2_count, dut.l3_count,
+             dut.l1_count + dut.l2_count + dut.l3_count);
+    
+    if ((dut.l1_count + dut.l2_count + dut.l3_count) >= 600) begin
+        $display("â Capacity test passed (total = %0d)", 
+                 dut.l1_count + dut.l2_count + dut.l3_count);
+    end else begin
+        $display("ERROR: Capacity too low %0d (expected ~672)", 
+                 dut.l1_count + dut.l2_count + dut.l3_count);
+        errors = errors + 1;
+    end
+    
+    drain_fifo();
+    $display("â Test 4 Complete\n");
+    
+    //=========================================================================
+    // Summary
+    //=========================================================================
+    #(CLK_PERIOD*10);
+    
+    $display("\n=== Test Summary ===");
+    $display("Total Errors: %0d", errors);
+    if (errors == 0) begin
+        $display("*** ALL TESTS PASSED ***");
+    end else begin
+        $display("*** TESTS FAILED ***");
+    end
+    
+    $finish;
+end
+
+// Safety monitor
+always_ff @(posedge clk) begin
+    if (rst_n && wr_en && wr_full) begin
+        $display("WARNING: Attempted write when full at %0t", $time);
+    end
+end
+
+initial begin
+    $dumpfile("tb_hierarchical_fifo_system.vcd");
+    $dumpvars(0, tb_hierarchical_fifo_system);
+end
+
+endmodule
