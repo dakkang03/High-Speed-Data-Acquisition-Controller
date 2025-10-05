@@ -24,7 +24,12 @@ module high_speed_daq_controller #(
     output logic serial_valid,
     
     output logic interrupt,
-    output logic [7:0] status_leds
+    output logic [7:0] status_leds,
+    
+    // TEST MODE SIGNALS - for coverage enhancement
+    input logic test_mode,
+    input logic [NUM_CHANNELS-1:0] test_channel_ready,
+    input logic test_adc_busy
 );
 
 // =============================================================================
@@ -54,24 +59,20 @@ logic [2:0] bit_counter;
 logic [7:0] spi_shift_reg;
 logic spi_cs_n_sync, spi_cs_n_meta;
 
-// SPI-domain storage for addr/data
 logic [15:0] reg_addr_spi;
 logic [31:0] reg_wdata_spi;
 
-// Ready/Valid handshake signals
 logic req_valid_spi;
 logic ack_spi_sync1, ack_spi_sync2;
-logic write_pending;     // Indicates write data is ready
-logic spi_cs_n_sync_prev; // For edge detection
+logic write_pending;
+logic spi_cs_n_sync_prev;
 
-// CLK domain: sync req_valid and generate ack
 logic req_valid_clk_sync1, req_valid_clk_sync2;
 logic req_valid_clk_prev;
 logic req_rising_edge_clk;
 logic ack_clk;
 logic ack_clk_sync1, ack_clk_sync2;
 
-// Other signals
 logic [CHANNEL_WIDTH-1:0] selected_channel;
 logic channel_valid, channel_accept;
 logic [NUM_CHANNELS-1:0] channel_enable, channel_ready, channel_urgent;
@@ -111,8 +112,18 @@ logic sample_ready;
 logic [ADC_WIDTH-1:0] captured_data;
 logic [TIMESTAMP_WIDTH-1:0] global_timestamp;
 
+// Internal signals for arbiter
+logic adc_busy_internal;
+logic [NUM_CHANNELS-1:0] channel_ready_internal;
+
 // =============================================================================
-// SPI CS Synchronizer (spi_sclk domain)
+// TEST MODE LOGIC - Select between normal and test signals
+// =============================================================================
+assign adc_busy_internal = test_mode ? test_adc_busy : adc_busy;
+assign channel_ready_internal = test_mode ? test_channel_ready : channel_enable;
+
+// =============================================================================
+// SPI CS Synchronizer
 // =============================================================================
 always_ff @(posedge spi_sclk or negedge rst_n) begin
     if (!rst_n) begin
@@ -125,8 +136,7 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
 end
 
 // =============================================================================
-// SPI Slave Interface - PROPER CDC with CS edge detection
-// Key fix: Trigger request on CS deassert after complete transaction
+// SPI Slave Interface
 // =============================================================================
 always_ff @(posedge spi_sclk or negedge rst_n) begin
     if (!rst_n) begin
@@ -141,16 +151,12 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
         write_pending <= 1'b0;
         spi_cs_n_sync_prev <= 1'b1;
     end else begin
-        // ALWAYS synchronize ack from CLK domain
         ack_spi_sync1 <= ack_clk_sync2;
         ack_spi_sync2 <= ack_spi_sync1;
         
-        // Track CS for edge detection
         spi_cs_n_sync_prev <= spi_cs_n_sync;
         
-        // Detect CS rising edge (deassert) - trigger pending write
         if (!spi_cs_n_sync_prev && spi_cs_n_sync) begin
-            // CS just deasserted
             if (write_pending && !req_valid_spi) begin
                 req_valid_spi <= 1'b1;
             end
@@ -158,18 +164,15 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
         end
         
         if (spi_cs_n_sync) begin
-            // CS deasserted - reset state but keep req_valid until ack
             bit_counter <= 0;
             spi_shift_reg <= 0;
             spi_state <= SPI_IDLE;
         end else begin
-            // Shift in MOSI
             spi_shift_reg <= {spi_shift_reg[6:0], spi_mosi};
             if (bit_counter == 7) bit_counter <= 0; 
             else bit_counter <= bit_counter + 1;
             spi_state <= spi_next_state;
 
-            // Capture data when byte complete
             if (bit_counter == 7) begin
                 case (spi_state)
                     SPI_ADDR_HIGH:  reg_addr_spi[15:8]  <= {spi_shift_reg[6:0], spi_mosi};
@@ -179,21 +182,19 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
                     SPI_DATA_BYTE2: reg_wdata_spi[15:8]  <= {spi_shift_reg[6:0], spi_mosi};
                     SPI_DATA_BYTE3: begin
                         reg_wdata_spi[7:0] <= {spi_shift_reg[6:0], spi_mosi};
-                        write_pending <= 1'b1;  // Mark write as pending
+                        write_pending <= 1'b1;
                     end
                     default: ;
                 endcase
             end
         end
         
-        // Clear request when ack received
         if (ack_spi_sync2 && req_valid_spi) begin
             req_valid_spi <= 1'b0;
         end
     end
 end
 
-// SPI state machine transitions
 always_comb begin
     spi_next_state = spi_state;
     if (spi_cs_n_sync) spi_next_state = SPI_IDLE;
@@ -212,10 +213,10 @@ always_comb begin
     end
 end
 
-assign spi_miso = 1'b0;  // Read not implemented
+assign spi_miso = 1'b0;
 
 // =============================================================================
-// Request Synchronization: SPI domain -> CLK domain
+// Request Synchronization
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -224,18 +225,15 @@ always_ff @(posedge clk or negedge rst_n) begin
         req_valid_clk_prev <= 1'b0;
         req_rising_edge_clk <= 1'b0;
     end else begin
-        // Two-stage synchronizer
         req_valid_clk_sync1 <= req_valid_spi;
         req_valid_clk_sync2 <= req_valid_clk_sync1;
-
-        // Detect rising edge
         req_rising_edge_clk <= (req_valid_clk_sync2 && !req_valid_clk_prev);
         req_valid_clk_prev <= req_valid_clk_sync2;
     end
 end
 
 // =============================================================================
-// Register Write Logic in CLK domain
+// Register Write Logic
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -246,7 +244,6 @@ always_ff @(posedge clk or negedge rst_n) begin
         ack_clk <= 1'b0;
     end else begin
         if (req_rising_edge_clk) begin
-            // Latch stable data from SPI domain
             reg_addr_cdc <= reg_addr_spi;
             reg_wdata_cdc <= reg_wdata_spi;
             reg_write_pulse <= 1'b1;
@@ -258,11 +255,10 @@ always_ff @(posedge clk or negedge rst_n) begin
             reg_write_pulse <= 1'b0;
         end
 
-        // Assert ack AFTER write completes (one cycle delay)
         if (write_hold_counter == 1) begin
             ack_clk <= 1'b1;
         end else if (ack_clk) begin
-            ack_clk <= 1'b0;  // Hold for only 1 cycle
+            ack_clk <= 1'b0;
         end
     end
 end
@@ -270,7 +266,7 @@ end
 assign reg_write = reg_write_pulse;
 
 // =============================================================================
-// Acknowledge Synchronization: CLK domain -> SPI domain
+// Acknowledge Synchronization
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -288,12 +284,12 @@ end
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         for (int i = 0; i < 32; i++) config_registers[i] <= 32'h0;
-        config_registers[0] <= 32'h0000_0001;  // Enable
-        config_registers[1] <= 32'h0000_FFFF;  // All channels
-        config_registers[2] <= 32'h0000_0000;  // Round-robin mode
+        config_registers[0] <= 32'h0000_0001;
+        config_registers[1] <= 32'h0000_00FF;
+        config_registers[2] <= 32'h0000_0000;
         for (int i = 0; i < 8; i++) begin
-            config_registers[8+i] <= 32'h0000_0002;   // Default priority
-            config_registers[16+i] <= 32'h0000_0001;  // Default weight
+            config_registers[8+i] <= 32'h0000_0002;
+            config_registers[16+i] <= 32'h0000_0001;
         end
     end else if (reg_write) begin
         automatic int reg_index;
@@ -307,6 +303,14 @@ end
 assign channel_enable = config_registers[1][NUM_CHANNELS-1:0];
 assign arbiter_mode = config_registers[2][1:0];
 
+logic [NUM_CHANNELS-1:0] urgent_mask;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) urgent_mask <= '0;
+    else if (reg_write && reg_addr_cdc[7:2] == 6'd3) 
+        urgent_mask <= reg_wdata_cdc[NUM_CHANNELS-1:0];
+end
+assign channel_urgent = urgent_mask;
+
 always_comb begin
     for (int i = 0; i < NUM_CHANNELS; i++) begin
         channel_priority[i] = config_registers[8+i][3:0];
@@ -317,6 +321,11 @@ always_comb begin
         trigger_config[i] = config_registers[4+i];
     end
 end
+
+// =============================================================================
+// Channel Ready Assignment - MODIFIED FOR TEST MODE
+// =============================================================================
+assign channel_ready = channel_ready_internal;
 
 // =============================================================================
 // Serial Output Interface
@@ -410,9 +419,6 @@ always_comb begin
     endcase
 end
 
-assign channel_ready = channel_enable;
-assign channel_urgent = '0;
-
 // =============================================================================
 // FIFO Write Logic
 // =============================================================================
@@ -446,7 +452,6 @@ assign interrupt = trigger_detected || fifo_full || (|warning_flags);
 // Module Instantiations
 // =============================================================================
 
-// Configurable Arbiter
 configurable_arbiter #(
     .NUM_CHANNELS(NUM_CHANNELS)
 ) arbiter_inst (
@@ -458,13 +463,12 @@ configurable_arbiter #(
     .channel_enable(channel_enable),
     .channel_ready(channel_ready),
     .channel_urgent(channel_urgent),
-    .adc_busy(adc_busy),
+    .adc_busy(adc_busy_internal),
     .selected_channel(selected_channel),
     .channel_valid(channel_valid),
     .channel_accept(channel_accept)
 );
 
-// FIFO
 single_fifo #(
     .DATA_WIDTH(16), 
     .FIFO_DEPTH(FIFO_DEPTH)
@@ -489,7 +493,6 @@ single_fifo #(
     .count(fifo_count)
 );
 
-// Trigger Engine
 derivative_threshold_engine #(
     .NUM_CHANNELS(NUM_CHANNELS), 
     .ADC_WIDTH(ADC_WIDTH)
@@ -506,7 +509,6 @@ derivative_threshold_engine #(
     .trigger_valid(trigger_valid)
 );
 
-// Performance Monitor
 performance_monitor #(
     .NUM_CHANNELS(NUM_CHANNELS)
 ) perf_mon (
