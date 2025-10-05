@@ -118,3 +118,70 @@ Main controller with SPI configuration interface.
 - `0x0040-0x005C`: Channel weights (Mode 2/3)
 
 ---
+## Verification Coverage
+
+![Standalone Tests](https://img.shields.io/badge/Standalone_Tests-74%25+-brightgreen)
+![System Integration](https://img.shields.io/badge/System_Integration-58%25-yellow)
+
+### Standalone Module Coverage (Targeted Testing)
+
+| Module | Overall | Branch | Statement | Key Achievement |
+|:-------|:-------:|:------:|:---------:|:----------------|
+| **Arbiter** | **74.3%** | 93.5% | 99.6% | 28% → 74% improvement |
+| **FIFO** | **86.2%** | 87.1% | 98.3% | 100% expression coverage |
+| **Trigger** | **73.9%** | 75.0% | 96.9% | Derivative logic validated |
+
+### System Integration Coverage
+
+| Overall | Branch | Condition | Statement | FSM |
+|:-------:|:------:|:---------:|:---------:|:---:|
+| **58.0%** | 75.3% | 37.4% | 85.9% | 100% states |
+
+<details>
+<summary>📊 Detailed Coverage Breakdown</summary>
+
+#### Arbiter Module (`tb_arbiter`)
+| Metric | Bins | Hits | Coverage |
+|--------|-----:|-----:|---------:|
+| Branches | 46 | 43 | **93.47%** |
+| Conditions | 26 | 18 | 69.23% |
+| Expressions | 12 | 4 | 33.33% |
+| Statements | 244 | 243 | **99.59%** |
+| Toggles | 254 | 193 | 75.98% |
+
+#### FIFO Module (`tb_fifo`)
+| Metric | Bins | Hits | Coverage |
+|--------|-----:|-----:|---------:|
+| Branches | 31 | 27 | **87.09%** |
+| Conditions | 11 | 9 | 81.81% |
+| Expressions | 3 | 3 | **100%** |
+| Statements | 117 | 115 | **98.29%** |
+
+#### Trigger Engine (`tb_trigger`)
+| Metric | Bins | Hits | Coverage |
+|--------|-----:|-----:|---------:|
+| Branches | 28 | 21 | **75.0%** |
+| Conditions | 10 | 4 | 40.0% |
+| Expressions | 19 | 14 | **73.68%** |
+| Statements | 161 | 156 | **96.89%** |
+| Toggles | 372 | 313 | 84.13% |
+
+</details>
+
+### Coverage Methodology
+
+**Two-Tier Verification Strategy:**
+
+1. **Standalone Testbenches** (74%+ average)
+   - Direct signal control eliminates system constraints
+   - Targeted stimulus for edge cases and corner conditions
+   - Achieves high coverage through independent module testing
+
+2. **System Integration** (58%)
+   - End-to-end functional validation with real biosignal data
+   - Cross-module interaction verification
+   - Lower coverage expected due to integration constraints
+
+**Key Insight:** Arbiter coverage improved from 28% (system-level) to 74% (standalone) by identifying and eliminating signal dependency limitations through independent testbench development.
+
+> 📁 Full coverage reports: `/Coverage files/`  
