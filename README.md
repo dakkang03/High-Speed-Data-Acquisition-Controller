@@ -1,3 +1,4 @@
+
 # High-Speed Data Acquisition Controller
 
 **VLSI Design Project**
@@ -185,3 +186,4 @@ Main controller with SPI configuration interface.
 **Key Insight:** Arbiter coverage improved from 28% (system-level) to 74% (standalone) by identifying and eliminating signal dependency limitations through independent testbench development.
 
 > 📁 Full coverage reports: `/Coverage files/`  
+=======
