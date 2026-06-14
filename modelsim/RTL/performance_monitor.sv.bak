@@ -1,0 +1,211 @@
+// =============================================================================
+// performance_monitor
+//  - 변경점: fifo_depth 관련 비트폭 [9:0] -> [4:0] (depth=16에 맞춤)
+//            나머지 로직은 동일
+// =============================================================================
+module performance_monitor #(
+    parameter NUM_CHANNELS = 8,
+    parameter CHANNEL_WIDTH = $clog2(NUM_CHANNELS),
+    parameter TIMESTAMP_WIDTH = 32
+)(
+    input  logic clk,
+    input  logic rst_n,
+
+    input  logic sample_valid,
+    input  logic [CHANNEL_WIDTH-1:0] sample_channel,
+    input  logic [TIMESTAMP_WIDTH-1:0] sample_timestamp,
+
+    input  logic fifo_wr_en,
+    input  logic fifo_rd_en,
+    input  logic [4:0] fifo_count,
+    input  logic [4:0] fifo_depth,
+    input  logic fifo_full,
+    input  logic fifo_empty,
+
+    input  logic trigger_detected,
+    input  logic [CHANNEL_WIDTH-1:0] trigger_channel,
+    input  logic [7:0] trigger_confidence,
+
+    input  logic adc_conversion_start,
+    input  logic adc_conversion_done,
+    input  logic [CHANNEL_WIDTH-1:0] adc_channel,
+
+    output logic [31:0] throughput_sps,
+    output logic [31:0] avg_latency_ns,
+    output logic [31:0] max_latency_ns,
+    output logic [7:0]  fifo_utilization_pct,
+    output logic [15:0] trigger_rate_ppm,
+
+    output logic [7:0] warning_flags,
+    output logic [31:0] debug_counters
+);
+
+localparam WARN_LOW_THROUGHPUT    = 0;
+localparam WARN_HIGH_LATENCY      = 1;
+localparam WARN_HIGH_FIFO_USAGE   = 2;
+localparam WARN_FIFO_OVERFLOW     = 3;
+localparam WARN_HIGH_TRIGGER_RATE = 4;
+localparam WARN_LOW_TRIGGER_RATE  = 5;
+localparam WARN_ADC_TIMEOUT       = 6;
+localparam WARN_SYSTEM_OVERLOAD   = 7;
+
+logic [31:0] throughput_counter;
+logic [31:0] throughput_window_counter;
+logic [31:0] timestamp_1sec_ago;
+logic [31:0] samples_in_window;
+logic [31:0] throughput_sps_reg;
+
+logic [TIMESTAMP_WIDTH-1:0] sample_start_time [NUM_CHANNELS-1:0];
+logic [31:0] latency_sum [NUM_CHANNELS-1:0];
+logic [31:0] latency_count [NUM_CHANNELS-1:0];
+logic [31:0] latency_max [NUM_CHANNELS-1:0];
+logic [31:0] current_latency;
+
+logic [7:0] fifo_util_current;
+logic [15:0] fifo_util_samples;
+logic [31:0] fifo_util_sum;
+
+logic [31:0] trigger_count_total;
+logic [31:0] sample_count_total;
+
+logic [31:0] adc_start_time_arr [NUM_CHANNELS-1:0];
+logic [31:0] adc_timeout_count;
+
+localparam CLK_FREQ_HZ = 100_000_000;
+localparam NS_PER_CYCLE = 1_000_000_000 / CLK_FREQ_HZ;
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        throughput_counter <= 0; throughput_window_counter <= 0;
+        samples_in_window <= 0; timestamp_1sec_ago <= 0; throughput_sps_reg <= 0;
+    end else begin
+        if (sample_valid) throughput_counter <= throughput_counter + 1;
+        if (sample_timestamp >= timestamp_1sec_ago + CLK_FREQ_HZ) begin
+            throughput_sps_reg <= samples_in_window;
+            samples_in_window <= 0;
+            timestamp_1sec_ago <= sample_timestamp;
+            throughput_window_counter <= throughput_window_counter + 1;
+        end else if (sample_valid) begin
+            samples_in_window <= samples_in_window + 1;
+        end
+    end
+end
+
+always_comb begin
+    if (throughput_window_counter > 0) throughput_sps = throughput_sps_reg;
+    else if (sample_timestamp > 10000) throughput_sps = (throughput_counter * CLK_FREQ_HZ) / sample_timestamp;
+    else throughput_sps = 0;
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            sample_start_time[i] <= 0; latency_sum[i] <= 0; latency_count[i] <= 0; latency_max[i] <= 0;
+        end
+        current_latency <= 0;
+    end else begin
+        if (sample_valid && sample_channel < NUM_CHANNELS)
+            sample_start_time[sample_channel] <= sample_timestamp;
+
+        if (fifo_rd_en) begin
+            automatic logic [CHANNEL_WIDTH-1:0] read_channel;
+            read_channel = sample_channel;
+            if (sample_start_time[read_channel] != 0) begin
+                current_latency = (sample_timestamp - sample_start_time[read_channel]) * NS_PER_CYCLE;
+                latency_sum[read_channel] <= latency_sum[read_channel] + current_latency;
+                latency_count[read_channel] <= latency_count[read_channel] + 1;
+                if (current_latency > latency_max[read_channel]) latency_max[read_channel] <= current_latency;
+                sample_start_time[read_channel] <= 0;
+            end
+        end
+    end
+end
+
+logic [31:0] total_latency_sum, total_latency_count, global_max_latency;
+always_comb begin
+    total_latency_sum = 0; total_latency_count = 0; global_max_latency = 0;
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+        total_latency_sum   = total_latency_sum + latency_sum[i];
+        total_latency_count = total_latency_count + latency_count[i];
+        if (latency_max[i] > global_max_latency) global_max_latency = latency_max[i];
+    end
+    avg_latency_ns = (total_latency_count > 0) ? (total_latency_sum / total_latency_count) : 0;
+    max_latency_ns = global_max_latency;
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        fifo_util_sum <= 0; fifo_util_samples <= 0; fifo_util_current <= 0;
+    end else begin
+        fifo_util_current <= (fifo_depth > 0) ? (fifo_count * 100) / fifo_depth : 8'd0;
+        if (fifo_util_samples < 16'hFFFF) begin
+            fifo_util_sum <= fifo_util_sum + fifo_util_current;
+            fifo_util_samples <= fifo_util_samples + 1;
+        end
+    end
+end
+
+always_comb begin
+    automatic logic [31:0] avg_temp;
+    if (fifo_util_samples > 0) begin
+        avg_temp = fifo_util_sum / fifo_util_samples;
+        fifo_utilization_pct = (avg_temp > 100) ? 8'd100 : avg_temp[7:0];
+    end else fifo_utilization_pct = fifo_util_current;
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin trigger_count_total <= 0; sample_count_total <= 0; end
+    else begin
+        if (trigger_detected) trigger_count_total <= trigger_count_total + 1;
+        if (sample_valid) sample_count_total <= sample_count_total + 1;
+    end
+end
+
+always_comb begin
+    if (sample_count_total > 0) begin
+        automatic logic [63:0] rate_calc;
+        rate_calc = (trigger_count_total * 64'd1000000) / sample_count_total;
+        trigger_rate_ppm = (rate_calc > 65535) ? 16'hFFFF : rate_calc[15:0];
+    end else trigger_rate_ppm = 0;
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) adc_start_time_arr[i] <= 0;
+        adc_timeout_count <= 0;
+    end else begin
+        if (adc_conversion_start && adc_channel < NUM_CHANNELS)
+            adc_start_time_arr[adc_channel] <= sample_timestamp;
+        if (adc_conversion_done && adc_channel < NUM_CHANNELS) begin
+            if (adc_start_time_arr[adc_channel] != 0)
+                adc_start_time_arr[adc_channel] <= 0;
+        end
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            if (adc_start_time_arr[i] != 0 &&
+                (sample_timestamp - adc_start_time_arr[i]) > (CLK_FREQ_HZ / 1000)) begin
+                adc_timeout_count <= adc_timeout_count + 1;
+                adc_start_time_arr[i] <= 0;
+            end
+        end
+    end
+end
+
+always_comb begin
+    automatic int flag_count;
+    warning_flags = 8'b0; flag_count = 0;
+    if (throughput_sps < 2400 && throughput_sps > 0) begin warning_flags[WARN_LOW_THROUGHPUT]=1'b1; flag_count++; end
+    if (avg_latency_ns > 1_000_000) begin warning_flags[WARN_HIGH_LATENCY]=1'b1; flag_count++; end
+    if (fifo_utilization_pct > 80) begin warning_flags[WARN_HIGH_FIFO_USAGE]=1'b1; flag_count++; end
+    if (fifo_full && fifo_wr_en) begin warning_flags[WARN_FIFO_OVERFLOW]=1'b1; flag_count++; end
+    if (trigger_rate_ppm > 100_000) begin warning_flags[WARN_HIGH_TRIGGER_RATE]=1'b1; flag_count++; end
+    else if (trigger_rate_ppm < 100 && sample_count_total > 1000) begin warning_flags[WARN_LOW_TRIGGER_RATE]=1'b1; flag_count++; end
+    if (adc_timeout_count > 0) begin warning_flags[WARN_ADC_TIMEOUT]=1'b1; flag_count++; end
+    if (flag_count >= 3) warning_flags[WARN_SYSTEM_OVERLOAD] = 1'b1;
+end
+
+assign debug_counters = {throughput_counter[15:0], trigger_count_total[15:0]};
+
+endmodule
+
+
+

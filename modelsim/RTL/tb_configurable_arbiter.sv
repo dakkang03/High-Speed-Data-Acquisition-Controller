@@ -1,453 +1,336 @@
+// =============================================================================
+// tb_arbiter.sv
+// configurable_arbiter 모듈 단위 검증
+//  - Directed test: arbitration mode 전환(RR/Priority/Weighted/Dynamic),
+//                    reset 중 입력 발생, 모든 채널 동시 request
+//  - SVA: selected_channel validity, mode-specific invariant, reset 동작
+//  - Functional coverage: 4가지 mode, 전 채널 동시 요청, mode 전환
+// =============================================================================
+`timescale 1ns/1ps
+
 module tb_configurable_arbiter;
 
-// Parameters
-localparam NUM_CHANNELS = 16;
-localparam CHANNEL_WIDTH = $clog2(NUM_CHANNELS);
-localparam CLK_PERIOD = 10; // 10ns = 100MHz
+    localparam NUM_CHANNELS  = 8;
+    localparam CHANNEL_WIDTH = $clog2(NUM_CHANNELS);
 
-// Clock and Reset
-logic clk;
-logic rst_n;
+    logic clk = 0;
+    logic rst_n;
 
-// Configuration signals
-logic [1:0] arbiter_mode;
-logic [3:0] channel_priority [NUM_CHANNELS-1:0];
-logic [7:0] channel_weight [NUM_CHANNELS-1:0];
-logic [NUM_CHANNELS-1:0] channel_enable;
+    logic [1:0] arbiter_mode;
+    logic [3:0] channel_priority [NUM_CHANNELS-1:0];
+    logic [7:0] channel_weight   [NUM_CHANNELS-1:0];
+    logic [NUM_CHANNELS-1:0] channel_enable;
+    logic [NUM_CHANNELS-1:0] channel_ready;
+    logic [NUM_CHANNELS-1:0] channel_urgent;
+    logic adc_busy;
 
-// Runtime signals
-logic [NUM_CHANNELS-1:0] channel_ready;
-logic [NUM_CHANNELS-1:0] channel_urgent;
-logic adc_busy;
+    logic [CHANNEL_WIDTH-1:0] selected_channel;
+    logic channel_valid;
+    logic channel_accept;
 
-// Output signals
-logic [CHANNEL_WIDTH-1:0] selected_channel;
-logic channel_valid;
-logic channel_accept;
+    always #5 clk = ~clk; // 100MHz
 
-// Test control signals
-logic [31:0] test_cycle;
-logic [7:0] test_phase;
+    configurable_arbiter #(
+        .NUM_CHANNELS(NUM_CHANNELS)
+    ) dut (
+        .clk(clk), .rst_n(rst_n),
+        .arbiter_mode(arbiter_mode),
+        .channel_priority(channel_priority),
+        .channel_weight(channel_weight),
+        .channel_enable(channel_enable),
+        .channel_ready(channel_ready),
+        .channel_urgent(channel_urgent),
+        .adc_busy(adc_busy),
+        .selected_channel(selected_channel),
+        .channel_valid(channel_valid),
+        .channel_accept(channel_accept)
+    );
 
-// Variables for performance testing (declared at module level)
-int channel_count [NUM_CHANNELS-1:0];
-int selections_per_second;
-int start_time;
-int end_time;
-real duration_us;
-real throughput_MHz;
+    // =========================================================================
+    // SVA
+    // =========================================================================
 
-//=============================================================================
-// Clock Generation
-//=============================================================================
-always #(CLK_PERIOD/2) clk = ~clk;
+    // A1: selected_channel은 항상 0..NUM_CHANNELS-1 범위 (CHANNEL_WIDTH로 자동 보장되지만 명시)
+    property p_selected_channel_range;
+        @(posedge clk) disable iff (!rst_n)
+        selected_channel < NUM_CHANNELS;
+    endproperty
+    assert property (p_selected_channel_range)
+        else $error("[SVA-A1][%0t] selected_channel out of range: %0d", $time, selected_channel);
 
-//=============================================================================
-// DUT Instantiation
-//=============================================================================
-configurable_arbiter #(
-    .NUM_CHANNELS(NUM_CHANNELS)
-) dut (
-    .clk(clk),
-    .rst_n(rst_n),
-    .arbiter_mode(arbiter_mode),
-    .channel_priority(channel_priority),
-    .channel_weight(channel_weight),
-    .channel_enable(channel_enable),
-    .channel_ready(channel_ready),
-    .channel_urgent(channel_urgent),
-    .adc_busy(adc_busy),
-    .selected_channel(selected_channel),
-    .channel_valid(channel_valid),
-    .channel_accept(channel_accept)
-);
+    // A2: channel_valid=1이면 해당 채널은 enable && ready 상태여야 함
+    property p_valid_implies_enabled_ready;
+        @(posedge clk) disable iff (!rst_n)
+        channel_valid |-> (channel_enable[selected_channel] && channel_ready[selected_channel]);
+    endproperty
+    assert property (p_valid_implies_enabled_ready)
+        else $error("[SVA-A2][%0t] channel_valid asserted for disabled/not-ready channel %0d (enable=%b ready=%b)",
+                     $time, selected_channel, channel_enable[selected_channel], channel_ready[selected_channel]);
 
-//=============================================================================
-// Test Stimulus and Monitoring
-//=============================================================================
+    // A3: adc_busy=1이면 channel_valid=0 (새 변환 시작 안 함)
+    property p_no_valid_while_busy;
+        @(posedge clk) disable iff (!rst_n)
+        adc_busy |-> !channel_valid;
+    endproperty
+    assert property (p_no_valid_while_busy)
+        else $error("[SVA-A3][%0t] channel_valid asserted while adc_busy=1", $time);
 
-// Test cycle counter
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        test_cycle <= 0;
-    end else begin
-        test_cycle <= test_cycle + 1;
-    end
-end
+    // A4: 어떤 채널도 enable/ready가 아니면 channel_valid=0
+    property p_no_valid_if_none_ready;
+        @(posedge clk) disable iff (!rst_n)
+        (|(channel_enable & channel_ready) == 1'b0) |-> !channel_valid;
+    endproperty
+    assert property (p_no_valid_if_none_ready)
+        else $error("[SVA-A4][%0t] channel_valid asserted but no channel is enable&&ready", $time);
 
-// Simulate ADC accept behavior
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        channel_accept <= 1'b0;
-    end else begin
-        // Accept channel selection after 1 cycle delay (simulate ADC processing)
-        channel_accept <= channel_valid && !adc_busy && ($random % 10 != 0); // 90% accept rate
-    end
-end
+    // A5: reset 직후 rr_counter==0 (내부 신호 접근)
+    property p_reset_rr_counter;
+        @(posedge clk) (!rst_n) |=> (dut.rr_counter == 0);
+    endproperty
+    assert property (p_reset_rr_counter)
+        else $error("[SVA-A5][%0t] rr_counter not reset to 0: %0d", $time, dut.rr_counter);
 
-//=============================================================================
-// Test Scenarios
-//=============================================================================
+    // A6: reset 직후 모든 weight_accumulator==0
+    property p_reset_weight_acc;
+        @(posedge clk) (!rst_n) |=> (dut.weight_accumulator[0] == 0 &&
+                                       dut.weight_accumulator[NUM_CHANNELS-1] == 0);
+    endproperty
+    assert property (p_reset_weight_acc)
+        else $error("[SVA-A6][%0t] weight_accumulator not reset to 0", $time);
 
-initial begin
-    // Initialize all variables at the beginning
-    int i, j, k, m;
-    
-    // Initialize signals
-    clk = 0;
-    rst_n = 0;
-    arbiter_mode = 2'b00;
-    channel_enable = 16'h0000;
-    channel_ready = 16'h0000;
-    channel_urgent = 16'h0000;
-    adc_busy = 1'b0;
-    test_phase = 0;
-    selections_per_second = 0;
-    start_time = 0;
-    
-    // Initialize channel priorities (ECG=3, EEG=2, EMG=1)
-    for (i = 0; i < 4; i = i + 1) channel_priority[i] = 4'd3;     // ECG channels
-    for (i = 4; i < 12; i = i + 1) channel_priority[i] = 4'd2;   // EEG channels  
-    for (i = 12; i < 16; i = i + 1) channel_priority[i] = 4'd1;  // EMG channels
-    
-    // Initialize channel weights
-    for (i = 0; i < 4; i = i + 1) channel_weight[i] = 8'd4;      // ECG: weight 4
-    for (i = 4; i < 12; i = i + 1) channel_weight[i] = 8'd2;     // EEG: weight 2
-    for (i = 12; i < 16; i = i + 1) channel_weight[i] = 8'd1;    // EMG: weight 1
-    
-    // Initialize channel count array
-    for (i = 0; i < NUM_CHANNELS; i = i + 1) channel_count[i] = 0;
-    
-    $display("=== Configurable Arbiter Testbench Started ===");
-    
-    // Reset sequence
-    #(CLK_PERIOD*5);
-    rst_n = 1;
-    #(CLK_PERIOD*2);
-    
-    //=========================================================================
-    // Test Phase 1: Round-Robin Mode
-    //=========================================================================
-    test_phase = 1;
-    $display("\n--- Test Phase 1: Round-Robin Mode ---");
-    arbiter_mode = 2'b00; // Round-Robin
-    channel_enable = 16'hFFFF; // Enable all channels
-    channel_ready = 16'hFFFF;  // All channels ready
-    
-    // Run for 32 cycles to see complete round-robin cycle
-    for (j = 0; j < 32; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, RR Mode: Selected Ch%0d, Valid: %b", 
-                     $time, selected_channel, channel_valid);
-        end
-    end
-    
-    //=========================================================================  
-    // Test Phase 2: Priority Mode
-    //=========================================================================
-    test_phase = 2;
-    $display("\n--- Test Phase 2: Priority Mode ---");
-    arbiter_mode = 2'b01; // Priority-based
-    
-    // Test with all channels enabled - should favor ECG (priority 3)
-    for (j = 0; j < 20; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, Priority Mode: Selected Ch%0d (Priority %0d), Valid: %b", 
-                     $time, selected_channel, channel_priority[selected_channel], channel_valid);
-        end
-    end
-    
-    // Disable ECG channels, should switch to EEG
-    channel_enable = 16'hFFF0; // Disable Ch0-3 (ECG)
-    for (j = 0; j < 10; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, Priority Mode (No ECG): Selected Ch%0d (Priority %0d)", 
-                     $time, selected_channel, channel_priority[selected_channel]);
-        end
-    end
-    
-    //=========================================================================
-    // Test Phase 3: Weighted Mode  
-    //=========================================================================
-    test_phase = 3;
-    $display("\n--- Test Phase 3: Weighted Mode ---");
-    arbiter_mode = 2'b10; // Weighted
-    channel_enable = 16'hFFFF; // Re-enable all channels
-    
-    // Reset channel count array
-    for (i = 0; i < NUM_CHANNELS; i = i + 1) channel_count[i] = 0;
-    
-    for (j = 0; j < 100; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid && channel_accept) begin
-            channel_count[selected_channel] = channel_count[selected_channel] + 1;
-            $display("Time: %0t, Weighted Mode: Selected Ch%0d (Weight %0d), Count: %0d", 
-                     $time, selected_channel, channel_weight[selected_channel], 
-                     channel_count[selected_channel]);
-        end
-    end
-    
-    // Display final counts
-    $display("\n--- Weighted Mode Final Counts ---");
-    for (i = 0; i < NUM_CHANNELS; i = i + 1) begin
-        $display("Ch%0d (Weight %0d): Selected %0d times", 
-                 i, channel_weight[i], channel_count[i]);
-    end
-    
-    //=========================================================================
-    // Test Phase 4: Dynamic Mode (Urgent Channels)
-    //=========================================================================
-    test_phase = 4;
-    $display("\n--- Test Phase 4: Dynamic Mode with Urgent Channels ---");
-    arbiter_mode = 2'b11; // Dynamic
-    channel_urgent = 16'h0000; // No urgent initially
-    
-    // Normal operation for a few cycles
-    for (j = 0; j < 10; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, Dynamic Mode (Normal): Selected Ch%0d", 
+    // A7: Round-Robin 모드에서 channel_accept 시 rr_counter는 (이전+1)%N 또는 wrap
+    property p_rr_counter_increments;
+        @(posedge clk) disable iff (!rst_n)
+        (channel_accept && arbiter_mode == 2'b00 && $past(rst_n)) |=>
+            (dut.rr_counter == ((($past(dut.rr_counter) == NUM_CHANNELS-1) ? 0 : $past(dut.rr_counter) + 1)));
+    endproperty
+    assert property (p_rr_counter_increments)
+        else $error("[SVA-A7][%0t] rr_counter did not increment correctly: rr_counter=%0d past=%0d",
+                     $time, dut.rr_counter, $past(dut.rr_counter));
+
+    // A8: Dynamic 모드(2'b11)에서 urgent 채널이 있으면, 선택된 채널은 반드시 urgent 채널 중 하나
+    property p_dynamic_urgent_priority;
+        @(posedge clk) disable iff (!rst_n)
+        (arbiter_mode == 2'b11 && channel_valid &&
+         |(channel_urgent & channel_enable & channel_ready))
+        |-> channel_urgent[selected_channel];
+    endproperty
+    assert property (p_dynamic_urgent_priority)
+        else $error("[SVA-A8][%0t] Dynamic mode: urgent channel exists but selected_channel=%0d is not urgent",
                      $time, selected_channel);
-        end
+
+    // A9: Priority 모드에서 선택된 채널의 priority는, enable&&ready인 다른 모든 채널의
+    //     priority보다 작지 않아야 함 (최댓값 선택)
+    //
+    // NOTE: SVA 본문에서 매번 함수를 호출해 max를 계산하면, 함수 평가 시점과
+    // selected_channel/channel_valid가 참조하는 입력 스냅샷 사이에 evaluation
+    // region 차이로 인한 race가 발생할 수 있다(둘 다 "같은 클럭"의 조합 결과여야
+    // 하지만 시뮬레이터 내부에서 별도 시점에 샘플링됨).
+    // 이를 피하기 위해, max_priority_now를 매 클럭 always_comb으로 한 번만
+    // 계산해 두고 SVA에서는 그 값만 참조한다.
+    logic [3:0] max_priority_now;
+    always_comb begin
+        max_priority_now = 0;
+        for (int i = 0; i < NUM_CHANNELS; i++)
+            if (channel_enable[i] && channel_ready[i] && channel_priority[i] > max_priority_now)
+                max_priority_now = channel_priority[i];
     end
-    
-    // Trigger urgent condition on Channel 0 (ECG emergency)
-    channel_urgent = 16'h0001; // Ch0 urgent
-    $display("\n*** URGENT: Channel 0 (ECG) Emergency! ***");
-    
-    for (j = 0; j < 20; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, Dynamic Mode (URGENT): Selected Ch%0d, Urgent: %b", 
-                     $time, selected_channel, channel_urgent[selected_channel]);
+
+    property p_priority_mode_is_max;
+        @(posedge clk) disable iff (!rst_n)
+        (arbiter_mode == 2'b01 && channel_valid)
+        |-> (channel_priority[selected_channel] >= max_priority_now);
+    endproperty
+    assert property (p_priority_mode_is_max)
+        else $error("[SVA-A9][%0t] Priority mode: mode=%0d valid=%0b selected_channel=%0d priority=%0d is not max (max=%0d) enable=%b ready=%b prio={%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d}",
+                     $time, arbiter_mode, channel_valid, selected_channel, channel_priority[selected_channel], max_priority_now,
+                     channel_enable, channel_ready,
+                     channel_priority[0], channel_priority[1], channel_priority[2], channel_priority[3],
+                     channel_priority[4], channel_priority[5], channel_priority[6], channel_priority[7]);
+
+    // =========================================================================
+    // Functional coverage (manual covergroup)
+    // =========================================================================
+    covergroup cg_arbiter @(posedge clk);
+        option.per_instance = 1;
+        cp_mode: coverpoint arbiter_mode {
+            bins rr       = {2'b00};
+            bins priority_= {2'b01};
+            bins weighted = {2'b10};
+            bins dynamic_ = {2'b11};
+        }
+        cp_all_request: coverpoint (channel_enable & channel_ready) {
+            bins all_eight = {8'hFF};
+            bins others    = default;
+        }
+        cp_urgent_active: coverpoint (|channel_urgent) {
+            bins active = {1};
+        }
+        cp_mode_transition: coverpoint arbiter_mode {
+            bins trans[] = (2'b00, 2'b01, 2'b10, 2'b11 => 2'b00, 2'b01, 2'b10, 2'b11);
+        }
+        cp_busy: coverpoint adc_busy;
+        cp_valid: coverpoint channel_valid;
+        cross cp_mode, cp_all_request;
+    endgroup
+
+    cg_arbiter cg = new();
+
+    // =========================================================================
+    // Helper tasks
+    // =========================================================================
+    task automatic set_all_channels(logic en, logic rdy, logic urg);
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            channel_enable[i] = en;
+            channel_ready[i]  = rdy;
+            channel_urgent[i] = urg;
         end
-    end
-    
-    // Clear urgent condition
-    channel_urgent = 16'h0000;
-    $display("\n*** Urgent condition cleared ***");
-    
-    for (j = 0; j < 10; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("Time: %0t, Dynamic Mode (Recovered): Selected Ch%0d", 
-                     $time, selected_channel);
+    endtask
+
+    task automatic init_priorities_weights();
+        for (int i = 0; i < NUM_CHANNELS; i++) begin
+            channel_priority[i] = i;          // 채널번호=priority (서로 다른 값)
+            channel_weight[i]   = (i < 4) ? 2 : 1; // ECG:2, EEG/EMG:1
         end
-    end
-    
-    //=========================================================================
-    // Test Phase 5: ADC Busy and Channel Not Ready Scenarios
-    //=========================================================================
-    test_phase = 5;
-    $display("\n--- Test Phase 5: ADC Busy and Channel Ready Testing ---");
-    arbiter_mode = 2'b00; // Back to Round-Robin
-    
-    // Test ADC busy condition
-    adc_busy = 1'b1;
-    $display("*** ADC BUSY - No selections should occur ***");
-    for (j = 0; j < 10; j = j + 1) begin
-        @(posedge clk);
-        if (channel_valid) begin
-            $display("ERROR: Channel selected while ADC busy! Ch%0d", selected_channel);
-        end else begin
-            $display("Time: %0t, ADC Busy: No channel selected (correct)", $time);
+    endtask
+
+    // accept pulse 생성: channel_valid면 1클럭 accept
+    task automatic run_cycles_with_accept(int n);
+        repeat (n) begin
+            channel_accept = channel_valid;
+            @(posedge clk);
         end
-    end
-    
-    adc_busy = 1'b0;
-    $display("*** ADC Available ***");
-    
-    // Test channel not ready
-    channel_ready = 16'h000F; // Only first 4 channels ready
-    for (j = 0; j < 10; j = j + 1) begin
+        channel_accept = 0;
+    endtask
+
+    // =========================================================================
+    // Stimulus
+    // =========================================================================
+    initial begin
+        rst_n = 0;
+        arbiter_mode = 2'b00;
+        adc_busy = 0;
+        channel_accept = 0;
+        set_all_channels(1'b0, 1'b0, 1'b0);
+        init_priorities_weights();
+        repeat (3) @(posedge clk);
+        rst_n = 1;
         @(posedge clk);
-        if (channel_valid) begin
-            if (selected_channel >= 4) begin
-                $display("ERROR: Selected unready channel Ch%0d", selected_channel);
-            end else begin
-                $display("Time: %0t, Only Ch0-3 Ready: Selected Ch%0d (correct)", 
-                         $time, selected_channel);
+
+        // -----------------------------------------------------------------
+        // Scenario 1: Reset 중 입력 발생
+        //  - reset 도중 channel_enable/ready/urgent/accept 모두 asserted
+        //  - reset 해제 후 rr_counter, weight_accumulator가 0으로 시작하는지 SVA(A5,A6)가 체크
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 1: inputs asserted during reset");
+        set_all_channels(1'b1, 1'b1, 1'b1);
+        channel_accept = 1;
+        arbiter_mode = 2'b10; // weighted
+        rst_n = 0;
+        repeat (3) @(posedge clk);
+        rst_n = 1;
+        @(posedge clk);
+        if (dut.rr_counter !== 0)
+            $error("[TB-ARB] Scenario1 FAIL: rr_counter=%0d after reset, expected 0", dut.rr_counter);
+        else
+            $display("[TB-ARB] Scenario1 PASS: rr_counter=0 after reset despite asserted inputs");
+        channel_accept = 0;
+        set_all_channels(1'b0, 1'b0, 1'b0);
+        @(posedge clk);
+
+        // -----------------------------------------------------------------
+        // Scenario 2: 모든 채널이 동시에 request (all-channel contention)
+        //  - 4가지 모드 각각에서 전 채널 enable&&ready
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 2: all-channel simultaneous request");
+        for (int m = 0; m < 4; m++) begin
+            arbiter_mode = m[1:0];
+            set_all_channels(1'b1, 1'b1, 1'b0);
+            adc_busy = 0;
+            run_cycles_with_accept(2 * NUM_CHANNELS);
+            $display("[TB-ARB] Scenario2 mode=%0d: ran %0d cycles with all 8 channels requesting",
+                     m, 2*NUM_CHANNELS);
+        end
+        set_all_channels(1'b0, 1'b0, 1'b0);
+        @(posedge clk);
+
+        // -----------------------------------------------------------------
+        // Scenario 3: arbitration mode 전환 (모든 mode 조합 순회)
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 3: arbitration mode transitions");
+        set_all_channels(1'b1, 1'b1, 1'b0);
+        for (int m1 = 0; m1 < 4; m1++) begin
+            for (int m2 = 0; m2 < 4; m2++) begin
+                arbiter_mode = m1[1:0];
+                run_cycles_with_accept(3);
+                arbiter_mode = m2[1:0];
+                run_cycles_with_accept(3);
             end
         end
-    end
-    
-    //=========================================================================
-    // Test Phase 6: Edge Cases and Error Conditions
-    //=========================================================================
-    test_phase = 6;
-    $display("\n--- Test Phase 6: Edge Cases ---");
-    
-    // No channels enabled
-    channel_enable = 16'h0000;
-    channel_ready = 16'hFFFF;
-    for (j = 0; j < 10; j = j + 1) begin
+        $display("[TB-ARB] Scenario3 PASS: all 16 mode-transition combinations exercised");
+
+        // -----------------------------------------------------------------
+        // Scenario 4: Dynamic mode - urgent 채널 우선권 확인
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 4: Dynamic mode urgent priority");
+        arbiter_mode = 2'b11;
+        set_all_channels(1'b1, 1'b1, 1'b0);
+        channel_urgent = 8'h00;
+        run_cycles_with_accept(5);
+        // 채널 5에만 urgent 설정
+        channel_urgent = 8'b0010_0000;
         @(posedge clk);
-        if (channel_valid) begin
-            $display("ERROR: Channel selected when none enabled! Ch%0d", selected_channel);
-        end else begin
-            $display("Time: %0t, No Channels Enabled: No selection (correct)", $time);
-        end
-    end
-    
-    // Single channel enabled
-    channel_enable = 16'h0008; // Only Ch3 enabled
-    for (j = 0; j < 10; j = j + 1) begin
+        if (channel_valid && selected_channel !== 5)
+            $error("[TB-ARB] Scenario4 FAIL: urgent channel 5 set but selected_channel=%0d",
+                   selected_channel);
+        else
+            $display("[TB-ARB] Scenario4 PASS: selected_channel=%0d (urgent=5)", selected_channel);
+        channel_accept = 1;
         @(posedge clk);
-        if (channel_valid) begin
-            if (selected_channel == 3) begin
-                $display("Time: %0t, Single Channel: Selected Ch3 (correct)", $time);
-            end else begin
-                $display("ERROR: Wrong channel selected! Expected 3, got %0d", selected_channel);
-            end
-        end
-    end
-    
-    //=========================================================================
-    // Test Phase 7: Performance and Timing Analysis
-    //=========================================================================
-    test_phase = 7;
-    $display("\n--- Test Phase 7: Performance Analysis ---");
-    arbiter_mode = 2'b00; // Round-Robin
-    channel_enable = 16'hFFFF;
-    channel_ready = 16'hFFFF;
-    
-    selections_per_second = 0;
-    start_time = $time;
-    
-    for (j = 0; j < 1000; j = j + 1) begin // 10?s at 100MHz
+        channel_accept = 0;
+        channel_urgent = 8'h00;
         @(posedge clk);
-        if (channel_valid && channel_accept) begin
-            selections_per_second = selections_per_second + 1;
+
+        // -----------------------------------------------------------------
+        // Scenario 5: adc_busy 동안 channel_valid==0 유지
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 5: adc_busy blocks new selection");
+        arbiter_mode = 2'b00;
+        set_all_channels(1'b1, 1'b1, 1'b0);
+        adc_busy = 1;
+        repeat (5) @(posedge clk);
+        if (channel_valid)
+            $error("[TB-ARB] Scenario5 FAIL: channel_valid=1 while adc_busy=1");
+        else
+            $display("[TB-ARB] Scenario5 PASS: channel_valid=0 while adc_busy=1");
+        adc_busy = 0;
+        @(posedge clk);
+
+        // -----------------------------------------------------------------
+        // Scenario 6: Constrained-random mode/enable/ready/urgent 조합
+        // -----------------------------------------------------------------
+        $display("[TB-ARB] Scenario 6: constrained-random stimulus");
+        for (int i = 0; i < 300; i++) begin
+            arbiter_mode   = $urandom_range(0, 3);
+            channel_enable = $urandom_range(0, 255);
+            channel_ready  = $urandom_range(0, 255);
+            channel_urgent = $urandom_range(0, 255) & channel_enable; // urgent는 enable 채널 중에서만
+            adc_busy       = $urandom_range(0, 9) == 0; // 10% busy
+            channel_accept = channel_valid && ($urandom_range(0,1));
+            @(posedge clk);
         end
+        channel_accept = 0;
+        set_all_channels(1'b0, 1'b0, 1'b0);
+        adc_busy = 0;
+        @(posedge clk);
+
+        $display("==============================================");
+        $display("ARBITER directed+random scenarios completed.");
+        $display("Coverage (manual): mode RR/Pri/Weighted/Dynamic, all-8-channel request,");
+        $display("                   urgent active, mode transitions, reset-during-input");
+        $display("==============================================");
+
+        $finish;
     end
-    
-    end_time = $time;
-    duration_us = (end_time - start_time) / 1000.0;
-    throughput_MHz = selections_per_second / duration_us;
-    
-    $display("Performance Results:");
-    $display("  Duration: %.2f us", duration_us);
-    $display("  Selections: %0d", selections_per_second);
-    $display("  Throughput: %.2f MHz", throughput_MHz);
-    
-    //=========================================================================
-    // Test Completion
-    //=========================================================================
-    #(CLK_PERIOD*10);
-    $display("\n=== All Tests Completed Successfully ===");
-    $display("Total test cycles: %0d", test_cycle);
-    $display("Simulation time: %.2f us", $time/1000.0);
-    
-    $stop;
-end
-
-//=============================================================================
-// Checker Logic and Assertions
-//=============================================================================
-
-// Check that selected channel is always in valid range
-always_ff @(posedge clk) begin
-    if (rst_n && channel_valid) begin
-        if (selected_channel >= NUM_CHANNELS) begin
-            $error("Selected channel %0d out of range!", selected_channel);
-        end
-    end
-end
-
-// Check that selected channel is enabled and ready
-always_ff @(posedge clk) begin
-    if (rst_n && channel_valid && !adc_busy) begin
-        if (!channel_enable[selected_channel]) begin
-            $error("Selected disabled channel %0d!", selected_channel);
-        end
-        if (!channel_ready[selected_channel]) begin  
-            $error("Selected unready channel %0d!", selected_channel);
-        end
-    end
-end
-
-// Check that no selection occurs when ADC is busy
-always_ff @(posedge clk) begin
-    if (rst_n && adc_busy) begin
-        if (channel_valid) begin
-            $error("Channel selected while ADC busy!");
-        end
-    end
-end
-
-// Monitor urgent channel handling in dynamic mode
-always_ff @(posedge clk) begin
-    if (rst_n && arbiter_mode == 2'b11 && |channel_urgent && channel_valid) begin
-        if (!channel_urgent[selected_channel]) begin
-            $display("Warning: Urgent channel available but not selected: urgent=0x%04h, selected=%0d", 
-                     channel_urgent, selected_channel);
-        end
-    end
-end
-
-//=============================================================================
-// Simple Coverage Collection (Compatible with 2019.4)
-//=============================================================================
-
-// Manual coverage counters
-reg [31:0] mode_coverage [0:3];
-reg [31:0] channel_coverage [0:15];
-
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        // Initialize coverage counters on reset
-        mode_coverage[0] <= 0;
-        mode_coverage[1] <= 0;
-        mode_coverage[2] <= 0;
-        mode_coverage[3] <= 0;
-        
-        channel_coverage[0] <= 0;
-        channel_coverage[1] <= 0;
-        channel_coverage[2] <= 0;
-        channel_coverage[3] <= 0;
-        channel_coverage[4] <= 0;
-        channel_coverage[5] <= 0;
-        channel_coverage[6] <= 0;
-        channel_coverage[7] <= 0;
-        channel_coverage[8] <= 0;
-        channel_coverage[9] <= 0;
-        channel_coverage[10] <= 0;
-        channel_coverage[11] <= 0;
-        channel_coverage[12] <= 0;
-        channel_coverage[13] <= 0;
-        channel_coverage[14] <= 0;
-        channel_coverage[15] <= 0;
-    end else if (channel_valid) begin
-        // Count mode usage
-        case (arbiter_mode)
-            2'b00: mode_coverage[0] <= mode_coverage[0] + 1;
-            2'b01: mode_coverage[1] <= mode_coverage[1] + 1; 
-            2'b10: mode_coverage[2] <= mode_coverage[2] + 1;
-            2'b11: mode_coverage[3] <= mode_coverage[3] + 1;
-        endcase
-        
-        // Count channel usage
-        channel_coverage[selected_channel] <= channel_coverage[selected_channel] + 1;
-    end
-end
-
-//=============================================================================
-// Debug and Waveform Dumping
-//=============================================================================
-
-initial begin
-    $dumpfile("tb_configurable_arbiter.vcd");
-    $dumpvars(0, tb_configurable_arbiter);
-end
-
-// Monitor key signals (separate always block to avoid $display issues)
-always_ff @(posedge clk) begin
-    if (rst_n && test_phase > 0) begin
-        // Only display during active test phases
-    end
-end
 
 endmodule

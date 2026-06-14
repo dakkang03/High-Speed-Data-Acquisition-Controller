@@ -1,463 +1,546 @@
+// =============================================================================
+// tb_high_speed_daq_controller.sv  (ModelSim-Altera Starter Edition ?? ??)
+//   - covergroup, assert property, randomize/randcase/randsequence ???
+//   - ??? ?? ??? "?? ??? + always ?? ? if/$display"? ??
+//   - $urandom / $urandom_range ? ?? (Starter?? ???? ?? system function)
+// =============================================================================
+
 `timescale 1ns/1ps
 
 module tb_high_speed_daq_controller;
 
-localparam NUM_CHANNELS = 16;
-localparam ADC_WIDTH = 12;
-localparam CLK_PERIOD = 10;
-localparam SPI_PERIOD = 100;
-localparam MAX_SAMPLES = 10000;
+  localparam NUM_CHANNELS  = 8;
+  localparam CHANNEL_WIDTH = $clog2(NUM_CHANNELS);
+  localparam FIFO_DEPTH    = 16;
 
-logic clk, rst_n;
-logic spi_sclk, spi_mosi, spi_miso, spi_cs_n;
-logic adc_start_conv;
-logic [3:0] adc_channel_sel;
-logic adc_conv_done, adc_busy;
-logic [ADC_WIDTH-1:0] adc_data;
-logic serial_data, serial_clk, serial_valid;
-logic interrupt;
-logic [7:0] status_leds;
+  // ---------------------------------------------------------------------
+  // Clock / Reset
+  // ---------------------------------------------------------------------
+  logic clk;
+  logic rst_n;
 
-int error_count = 0;
-int total_samples = 0;
+  initial clk = 0;
+  always #5 clk = ~clk; // 100MHz
 
-logic [ADC_WIDTH-1:0] biosignal_data [0:NUM_CHANNELS-1][0:MAX_SAMPLES-1];
-int sample_index = 0;
-bit data_loaded = 0;
+  // ---------------------------------------------------------------------
+  // DUT 1: configurable_arbiter
+  // ---------------------------------------------------------------------
+  logic [1:0] arbiter_mode;
+  logic [3:0] channel_priority [NUM_CHANNELS-1:0];
+  logic [7:0] channel_weight   [NUM_CHANNELS-1:0];
+  logic [NUM_CHANNELS-1:0] channel_enable;
+  logic [NUM_CHANNELS-1:0] channel_ready;
+  logic [NUM_CHANNELS-1:0] channel_urgent;
+  logic adc_busy;
 
-string test_scenario = "normal";
-string base_path = "/home/u1425837/Desktop/ECE_5710_6710_F24/modelsim/RTL/test_data";
+  logic [CHANNEL_WIDTH-1:0] selected_channel;
+  logic channel_valid;
+  logic channel_accept;
 
-logic serial_valid_d;
-
-// Force signal control
-bit force_arbiter_signals = 0;
-logic [15:0] forced_channel_ready = 16'h0000;
-
-high_speed_daq_controller #(
-    .NUM_CHANNELS(16),
-    .ADC_WIDTH(12),
-    .FIFO_DEPTH(672),
-    .CHANNEL_WIDTH(4),
-    .TIMESTAMP_WIDTH(32)
-) dut (
-    .clk(clk),
-    .rst_n(rst_n),
-    .spi_sclk(spi_sclk),
-    .spi_mosi(spi_mosi),
-    .spi_miso(spi_miso),
-    .spi_cs_n(spi_cs_n),
-    .adc_start_conv(adc_start_conv),
-    .adc_channel_sel(adc_channel_sel),
-    .adc_conv_done(adc_conv_done),
-    .adc_data(adc_data),
+  configurable_arbiter #(.NUM_CHANNELS(NUM_CHANNELS)) dut_arb (
+    .clk(clk), .rst_n(rst_n),
+    .arbiter_mode(arbiter_mode),
+    .channel_priority(channel_priority),
+    .channel_weight(channel_weight),
+    .channel_enable(channel_enable),
+    .channel_ready(channel_ready),
+    .channel_urgent(channel_urgent),
     .adc_busy(adc_busy),
-    .serial_data(serial_data),
-    .serial_clk(serial_clk),
-    .serial_valid(serial_valid),
-    .interrupt(interrupt),
-    .status_leds(status_leds)
-);
+    .selected_channel(selected_channel),
+    .channel_valid(channel_valid),
+    .channel_accept(channel_accept)
+  );
 
-// Force arbiter signals to create multiple ready conditions
-always @(*) begin
-    if (force_arbiter_signals) begin
-        force dut.arbiter_inst.channel_ready = forced_channel_ready;
-        force dut.arbiter_inst.adc_busy = 1'b0;
-    end else begin
-        release dut.arbiter_inst.channel_ready;
-        release dut.arbiter_inst.adc_busy;
+  // ---------------------------------------------------------------------
+  // DUT 2: single_fifo
+  // ---------------------------------------------------------------------
+  logic [15:0] wr_data, rd_data;
+  logic wr_en, rd_en;
+  logic wr_full, rd_empty, almost_full;
+  logic [$clog2(FIFO_DEPTH):0] count;
+
+  single_fifo #(
+    .DATA_WIDTH(16), .FIFO_DEPTH(FIFO_DEPTH), .ALMOST_FULL_THRESHOLD(12)
+  ) dut_fifo (
+    .clk(clk), .rst_n(rst_n),
+    .wr_data(wr_data), .wr_en(wr_en), .wr_full(wr_full), .almost_full(almost_full),
+    .rd_data(rd_data), .rd_en(rd_en), .rd_empty(rd_empty),
+    .count(count)
+  );
+
+  // =========================================================================
+  // ARBITER ??: Reference Model + Scoreboard
+  // =========================================================================
+  logic [7:0] ref_weight_acc [NUM_CHANNELS-1:0];
+  logic [CHANNEL_WIDTH-1:0] ref_rr_counter;
+
+  function automatic [CHANNEL_WIDTH-1:0] ref_find_next_rr(
+      input [CHANNEL_WIDTH-1:0] start,
+      input [NUM_CHANNELS-1:0] en, rdy
+  );
+    for (int i = 0; i < NUM_CHANNELS; i++) begin
+      int idx = (start + i) % NUM_CHANNELS;
+      if (en[idx] && rdy[idx]) return idx;
     end
-end
+    return start;
+  endfunction
 
-// Data Loading
-initial begin
-    int file;
-    string line;
-    int sample;
-    string filename;
-    
-    $sformat(filename, "%s/%s_all_channels.csv", base_path, test_scenario);
-    $display("Loading biosignal data from %s...", filename);
-    
-    file = $fopen(filename, "r");
-    
-    if (file) begin
-        void'($fgets(line, file));
-        sample = 0;
-        while (!$feof(file) && sample < MAX_SAMPLES) begin
-            if ($fgets(line, file)) begin
-                automatic int ch = 0;
-                automatic string token = "";
-                
-                for (int i = 0; i < line.len(); i++) begin
-                    if (line[i] == "," || line[i] == "\n" || i == line.len()-1) begin
-                        if (line[i] != "," && line[i] != "\n") token = {token, line[i]};
-                        if (token.len() > 0 && ch < NUM_CHANNELS) begin
-                            $sscanf(token, "%h", biosignal_data[ch][sample]);
-                            ch++;
-                        end
-                        token = "";
-                    end else begin
-                        token = {token, line[i]};
-                    end
-                end
-                sample++;
-            end
-        end
-        $fclose(file);
-        $display("  Loaded %0d samples", sample);
-    end else begin
-        $display("  Using random data");
-        for (int ch = 0; ch < NUM_CHANNELS; ch++) begin
-            for (sample = 0; sample < MAX_SAMPLES; sample++) begin
-                biosignal_data[ch][sample] = $urandom_range(0, 4095);
-            end
-        end
-    end
-    
-    data_loaded = 1;
-    $display("Data loading complete\n");
-end
+  function automatic [CHANNEL_WIDTH-1:0] ref_find_max_weight(
+      input logic [7:0] w [NUM_CHANNELS-1:0],
+      input [NUM_CHANNELS-1:0] en, rdy
+  );
+    logic [7:0] max_w = 0;
+    logic [CHANNEL_WIDTH-1:0] max_ch = 0;
+    for (int i = 0; i < NUM_CHANNELS; i++)
+      if (en[i] && rdy[i] && w[i] > max_w) begin max_w = w[i]; max_ch = i; end
+    return max_ch;
+  endfunction
 
-initial begin
-    clk = 0;
-    forever #(CLK_PERIOD/2) clk = ~clk;
-end
+  function automatic [CHANNEL_WIDTH-1:0] ref_find_priority(
+      input logic [3:0] p [NUM_CHANNELS-1:0],
+      input [NUM_CHANNELS-1:0] en, rdy
+  );
+    logic [3:0] max_p = 0;
+    logic [CHANNEL_WIDTH-1:0] max_ch = 0;
+    logic found = 0;
+    for (int i = 0; i < NUM_CHANNELS; i++)
+      if (en[i] && rdy[i]) begin
+        if (!found || p[i] > max_p) begin max_p = p[i]; max_ch = i; found = 1; end
+      end
+    return max_ch;
+  endfunction
 
-// ADC Model
-initial begin
-    adc_conv_done = 0;
-    adc_busy = 0;
-    adc_data = 0;
-    wait(rst_n && data_loaded);
-    
-    forever begin
-        @(posedge adc_start_conv);
-        adc_busy = 1;
-        repeat(20) @(posedge clk);
-        
-        if (sample_index < MAX_SAMPLES) begin
-            adc_data = biosignal_data[adc_channel_sel][sample_index];
-        end else begin
-            adc_data = $urandom_range(0, (2**ADC_WIDTH)-1);
-        end
-        
-        @(posedge clk);
-        adc_conv_done = 1;
-        @(posedge clk);
-        adc_conv_done = 0;
-        adc_busy = 0;
-    end
-end
-
-// Sample Counter
-always @(posedge clk or negedge rst_n) begin
+  always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        serial_valid_d <= 1'b0;
-        total_samples <= 0;
+      for (int i = 0; i < NUM_CHANNELS; i++) ref_weight_acc[i] <= 0;
+      ref_rr_counter <= 0;
     end else begin
-        serial_valid_d <= serial_valid;
-        if (serial_valid_d && !serial_valid) begin
-            total_samples = total_samples + 1;
-        end
-    end
-end
+      for (int i = 0; i < NUM_CHANNELS; i++)
+        if (channel_enable[i]) ref_weight_acc[i] <= ref_weight_acc[i] + channel_weight[i];
 
-always @(posedge clk) begin
-    if (serial_valid_d && !serial_valid) begin
-        if (adc_channel_sel == NUM_CHANNELS-1) begin
-            sample_index = sample_index + 1;
-            if (sample_index >= MAX_SAMPLES) sample_index = 0;
-        end
-    end
-end
+      if (channel_accept && arbiter_mode == 2'b10)
+        ref_weight_acc[selected_channel] <= 0;
 
-// SPI Tasks
-task spi_write_reg(input [15:0] addr, input [31:0] data);
+      if (channel_accept && arbiter_mode == 2'b00)
+        ref_rr_counter <= (ref_rr_counter == NUM_CHANNELS-1) ? 0 : ref_rr_counter + 1;
+    end
+  end
+
+  logic [CHANNEL_WIDTH-1:0] ref_selected;
+  logic ref_valid;
+  int sb_arb_checks, sb_arb_errors;
+
+  always_comb begin
+    case (arbiter_mode)
+      2'b00: ref_selected = ref_find_next_rr(ref_rr_counter, channel_enable, channel_ready);
+      2'b01: ref_selected = ref_find_priority(channel_priority, channel_enable, channel_ready);
+      2'b10: ref_selected = ref_find_max_weight(ref_weight_acc, channel_enable, channel_ready);
+      default: ref_selected = ref_find_max_weight(ref_weight_acc, channel_enable, channel_ready);
+    endcase
+    ref_valid = channel_enable[ref_selected] && channel_ready[ref_selected] && !adc_busy;
+  end
+
+  always @(posedge clk) begin
+    if (rst_n) begin
+      sb_arb_checks = sb_arb_checks + 1;
+      if (channel_valid) begin
+        if (selected_channel !== ref_selected || channel_valid !== ref_valid) begin
+          sb_arb_errors = sb_arb_errors + 1;
+          $display("[SB-ARB][%0t] MISMATCH: mode=%0d DUT(sel=%0d,valid=%0b) REF(sel=%0d,valid=%0b)",
+                   $time, arbiter_mode, selected_channel, channel_valid, ref_selected, ref_valid);
+        end
+      end
+    end
+  end
+
+  // =========================================================================
+  // FIFO ??: Reference Model (??+???, queue ??) + Scoreboard
+  // =========================================================================
+  // Starter Edition?? ?? queue([$]) ??? -> ?? ?? + head/tail? ??
+  logic [15:0] ref_fifo_mem [0:255]; // ??? ? ?? ??
+  int ref_head, ref_tail, ref_size;
+  int sb_fifo_checks, sb_fifo_errors;
+
+  task ref_fifo_reset();
+    ref_head = 0; ref_tail = 0; ref_size = 0;
+  endtask
+
+  task ref_fifo_push(input logic [15:0] d);
+    ref_fifo_mem[ref_tail] = d;
+    ref_tail = (ref_tail + 1) % 256;
+    ref_size = ref_size + 1;
+  endtask
+
+  function automatic logic [15:0] ref_fifo_pop();
+    logic [15:0] v;
+    v = ref_fifo_mem[ref_head];
+    ref_head = (ref_head + 1) % 256;
+    ref_size = ref_size - 1;
+    return v;
+  endfunction
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      ref_fifo_reset();
+    end else begin
+      // ---- DUT? count/wr_full/rd_empty? nonblocking ???? ?? edge ?? ???
+      //      "?? ?"? ??? ?? ?? -> push/pop ??? ref_size? ???? ?? ??
+      //      ?, ????? ?? ??(? reset ?? ?) DUT ????? X? ? ???? skip ----
+      if (!$isunknown(rd_empty) && (ref_size == 0) !== rd_empty) begin
+        sb_fifo_errors = sb_fifo_errors + 1;
+        $display("[SB-FIFO][%0t] EMPTY mismatch: ref_size=%0d rd_empty=%0b", $time, ref_size, rd_empty);
+      end
+      if (!$isunknown(wr_full) && (ref_size >= FIFO_DEPTH) !== wr_full) begin
+        sb_fifo_errors = sb_fifo_errors + 1;
+        $display("[SB-FIFO][%0t] FULL mismatch: ref_size=%0d wr_full=%0b", $time, ref_size, wr_full);
+      end
+
+      if (wr_en && !wr_full) ref_fifo_push(wr_data);
+
+      if (rd_en && !rd_empty) begin
+        sb_fifo_checks = sb_fifo_checks + 1;
+        if (ref_size > 0) begin
+          logic [15:0] expected;
+          expected = ref_fifo_pop();
+          if (expected !== rd_data) begin
+            sb_fifo_errors = sb_fifo_errors + 1;
+            $display("[SB-FIFO][%0t] MISMATCH: expected=%h got=%h", $time, expected, rd_data);
+          end
+        end
+      end
+    end
+  end
+
+  // =========================================================================
+  // "Assertions" ??: always ?? + if/$display (A1~A10)
+  // =========================================================================
+  int err_A1, err_A2, err_A3, err_A4, err_A5, err_A6, err_A7, err_A8, err_A9, err_A10;
+
+  // ?? ??? ? ???
+  logic [$clog2(FIFO_DEPTH):0] count_prev;
+  logic wr_full_prev, rd_empty_prev, wr_en_prev, rd_en_prev;
+  logic channel_accept_prev;
+  logic [1:0] arbiter_mode_prev;
+  logic [CHANNEL_WIDTH-1:0] selected_channel_prev;
+  logic [CHANNEL_WIDTH-1:0] rr_counter_prev;
+  logic rst_n_prev;
+
+  always @(posedge clk) begin
+    // ---- A1: full && empty ?? ?? ----
+    if (rst_n) begin
+      if (wr_full && rd_empty) begin
+        err_A1 = err_A1 + 1;
+        $display("[A1][%0t] FIFO full and empty simultaneously", $time);
+      end
+
+      // ---- A2: count <= FIFO_DEPTH ----
+      if (count > FIFO_DEPTH) begin
+        err_A2 = err_A2 + 1;
+        $display("[A2][%0t] FIFO count exceeds depth: %0d", $time, count);
+      end
+
+      // ---- A3: ?? ??? (full && wr_en) ???, ?? ?? count==FIFO_DEPTH (overflow ??) ----
+      if (rst_n_prev && wr_full_prev && wr_en_prev) begin
+        if (count != FIFO_DEPTH) begin
+          err_A3 = err_A3 + 1;
+          $display("[A3][%0t] FIFO overflow: count=%0d (expected %0d)", $time, count, FIFO_DEPTH);
+        end
+      end
+
+      // ---- A4: ?? ??? (empty && rd_en) ??? read? ????? ?.
+      //      ?, ??? valid write? ???? count? +1 ?? ? ?? ----
+      if (rst_n_prev && rd_empty_prev && rd_en_prev) begin
+        logic write_happened;
+        write_happened = wr_en_prev && !wr_full_prev;
+        if (write_happened) begin
+          if (count != count_prev + 1) begin
+            err_A4 = err_A4 + 1;
+            $display("[A4][%0t] FIFO underflow(with concurrent write): count %0d -> %0d (expected %0d)",
+                     $time, count_prev, count, count_prev+1);
+          end
+        end else begin
+          if (count != count_prev) begin
+            err_A4 = err_A4 + 1;
+            $display("[A4][%0t] FIFO underflow: count changed from %0d to %0d", $time, count_prev, count);
+          end
+        end
+      end
+
+      // ---- A5: simultaneous R/W (? ? ???? ??) -> count ?? ??? ? ----
+      if (rst_n_prev && wr_en_prev && rd_en_prev && !wr_full_prev && !rd_empty_prev) begin
+        if (count != count_prev) begin
+          err_A5 = err_A5 + 1;
+          $display("[A5][%0t] simultaneous R/W count delta unexpected: %0d -> %0d", $time, count_prev, count);
+        end
+      end
+
+      // ---- A6: almost_full == (count>=12) ----
+      if (almost_full != (count >= 12)) begin
+        err_A6 = err_A6 + 1;
+        $display("[A6][%0t] almost_full incorrect for count=%0d (almost_full=%0b)", $time, count, almost_full);
+      end
+
+      // ---- A7: channel_valid -> selected channel enable&&ready ----
+      if (channel_valid && !(channel_enable[selected_channel] && channel_ready[selected_channel])) begin
+        err_A7 = err_A7 + 1;
+        $display("[A7][%0t] selected channel %0d not enable/ready", $time, selected_channel);
+      end
+
+      // ---- A8: adc_busy -> !channel_valid ----
+      if (adc_busy && channel_valid) begin
+        err_A8 = err_A8 + 1;
+        $display("[A8][%0t] channel_valid asserted while adc_busy", $time);
+      end
+
+      // ---- A10: RR ???? accept? ?? ??? rr_counter == rr_counter_prev+1 (mod N)
+      //      (DUT ??: rr_counter <= (rr_counter==N-1)?0:rr_counter+1, selected_channel?? ??) ----
+      if (rst_n_prev && channel_accept_prev && arbiter_mode_prev == 2'b00) begin
+        logic [CHANNEL_WIDTH-1:0] expected_rr;
+        expected_rr = (rr_counter_prev == NUM_CHANNELS-1) ? 0 : rr_counter_prev + 1;
+        if (dut_arb.rr_counter != expected_rr) begin
+          err_A10 = err_A10 + 1;
+          $display("[A10][%0t] RR counter mismatch: got=%0d expected=%0d (prev=%0d)",
+                   $time, dut_arb.rr_counter, expected_rr, rr_counter_prev);
+        end
+      end
+    end
+
+    // ---- A9: reset ?? ? ??? count==0 ----
+    if (!rst_n_prev && rst_n) begin
+      if (count != 0) begin
+        err_A9 = err_A9 + 1;
+        $display("[A9][%0t] FIFO count not 0 right after reset: %0d", $time, count);
+      end
+    end
+
+    // ?? ? ??
+    count_prev            <= count;
+    wr_full_prev          <= wr_full;
+    rd_empty_prev         <= rd_empty;
+    wr_en_prev            <= wr_en;
+    rd_en_prev            <= rd_en;
+    channel_accept_prev   <= channel_accept;
+    arbiter_mode_prev     <= arbiter_mode;
+    selected_channel_prev <= selected_channel;
+    rr_counter_prev       <= dut_arb.rr_counter;
+    rst_n_prev            <= rst_n;
+  end
+
+  // =========================================================================
+  // Coverage ??: ?? ??? (? ???? 1? ?? ?? ??)
+  // =========================================================================
+  int cov_mode_rr, cov_mode_prio, cov_mode_wgt, cov_mode_dyn;
+  int cov_mode_transitions [0:15]; // 4x4 = 16?? ??
+  int cov_all_channels_req, cov_no_channels_req;
+  int cov_reset_with_req;
+
+  int cov_fifo_overflow_attempt, cov_fifo_underflow_attempt, cov_fifo_simul_rw;
+  int cov_fifo_almost_full;
+  int cov_fifo_count_empty, cov_fifo_count_low, cov_fifo_count_almost, cov_fifo_count_full;
+
+  always @(posedge clk) begin
+    // arbiter mode coverage
+    case (arbiter_mode)
+      2'b00: cov_mode_rr   = cov_mode_rr + 1;
+      2'b01: cov_mode_prio = cov_mode_prio + 1;
+      2'b10: cov_mode_wgt  = cov_mode_wgt + 1;
+      2'b11: cov_mode_dyn  = cov_mode_dyn + 1;
+    endcase
+
+    // mode transition coverage
+    if (rst_n_prev) begin
+      int idx;
+      idx = arbiter_mode_prev * 4 + arbiter_mode;
+      cov_mode_transitions[idx] = cov_mode_transitions[idx] + 1;
+    end
+
+    // all/none channel request
+    if ((channel_ready & channel_enable) == 8'hFF) cov_all_channels_req = cov_all_channels_req + 1;
+    if ((channel_ready & channel_enable) == 8'h00) cov_no_channels_req  = cov_no_channels_req  + 1;
+
+    // reset with input
+    if (!rst_n && (|channel_ready)) cov_reset_with_req = cov_reset_with_req + 1;
+
+    // FIFO scenarios
+    if (wr_en && wr_full)  cov_fifo_overflow_attempt  = cov_fifo_overflow_attempt  + 1;
+    if (rd_en && rd_empty) cov_fifo_underflow_attempt = cov_fifo_underflow_attempt + 1;
+    if (wr_en && rd_en && !wr_full && !rd_empty) cov_fifo_simul_rw = cov_fifo_simul_rw + 1;
+    if (almost_full) cov_fifo_almost_full = cov_fifo_almost_full + 1;
+
+    if (count == 0) cov_fifo_count_empty = cov_fifo_count_empty + 1;
+    else if (count <= 7) cov_fifo_count_low = cov_fifo_count_low + 1;
+    else if (count >= 12 && count <= 15) cov_fifo_count_almost = cov_fifo_count_almost + 1;
+    else if (count == FIFO_DEPTH) cov_fifo_count_full = cov_fifo_count_full + 1;
+  end
+
+  // =========================================================================
+  // Stimulus (constrained-random) - $urandom_range ? ??
+  // =========================================================================
+  task setup_weights();
+    for (int i = 0; i < 4; i++) channel_weight[i] = 8'd2; // ECG
+    for (int i = 4; i < 8; i++) channel_weight[i] = 8'd1; // EEG/EMG
+    for (int i = 0; i < NUM_CHANNELS; i++) channel_priority[i] = 4'd1;
+  endtask
+
+  task drive_random_ready();
+    channel_ready = $urandom_range(0, 255);
+  endtask
+
+  task drive_all_request();
+    channel_ready  = 8'hFF;
+    channel_enable = 8'hFF;
+  endtask
+
+  task drive_fifo_random();
+    wr_en   = $urandom_range(0,1);
+    rd_en   = $urandom_range(0,1);
+    wr_data = $urandom;
+  endtask
+
+  task drive_fifo_overflow();
+    rd_en = 0;
+    repeat (FIFO_DEPTH + 4) begin
+      wr_en = 1;
+      wr_data = $urandom;
+      @(posedge clk);
+    end
+    wr_en = 0;
+  endtask
+
+  task drive_fifo_underflow();
+    wr_en = 0;
+    repeat (4) begin
+      rd_en = 1;
+      @(posedge clk);
+    end
+    rd_en = 0;
+  endtask
+
+  // =========================================================================
+  // Main test sequence
+  // =========================================================================
+  initial begin
+    arbiter_mode   = 2'b00;
+    channel_enable = 8'hFF;
+    channel_ready  = 8'h00;
+    channel_urgent = 8'h00;
+    adc_busy       = 0;
+    channel_accept = 0;
+    wr_en = 0; rd_en = 0; wr_data = 0;
+    setup_weights();
+
+    sb_arb_checks=0; sb_arb_errors=0;
+    sb_fifo_checks=0; sb_fifo_errors=0;
+    err_A1=0; err_A2=0; err_A3=0; err_A4=0; err_A5=0;
+    err_A6=0; err_A7=0; err_A8=0; err_A9=0; err_A10=0;
+
+    // -------- 1. Reset ? ?? ?? ???? --------
+    rst_n = 1;
+    @(posedge clk);
+    rst_n = 0;
+    channel_ready = 8'hFF;
+    repeat (2) @(posedge clk);
+    rst_n = 1;
+    repeat (2) @(posedge clk);
+
+    // -------- 2. ? arbiter mode? ?? ????? --------
+    for (int m = 0; m < 4; m++) begin
+      arbiter_mode = m[1:0];
+      repeat (200) begin
+        channel_accept = channel_valid && ($urandom_range(0,3) != 0);
+        drive_random_ready();
+        @(posedge clk);
+      end
+    end
+
+    // -------- 3. ?? ?? ?? request --------
+    repeat (50) begin
+      drive_all_request();
+      channel_accept = channel_valid;
+      @(posedge clk);
+    end
+
+    // -------- 4. Arbitration mode ?? (??) --------
+    for (int i = 0; i < 40; i++) begin
+      arbiter_mode = $urandom_range(0,3);
+      drive_random_ready();
+      channel_accept = channel_valid;
+      @(posedge clk);
+    end
+
+    // -------- 4b. Arbitration mode ?? (16?? ?? ?? ??, exhaustive) --------
+    // cov_mode_transitions[prev*4 + curr] ? 16/16 ??? ??
+    for (int prev_m = 0; prev_m < 4; prev_m++) begin
+      arbiter_mode = prev_m[1:0];
+      drive_random_ready();
+      channel_accept = channel_valid;
+      @(posedge clk); // prev_m? ? ?? ???? arbiter_mode_prev? ????? ?
+
+      for (int curr_m = 0; curr_m < 4; curr_m++) begin
+        arbiter_mode = curr_m[1:0];
+        drive_random_ready();
+        channel_accept = channel_valid;
+        @(posedge clk); // (prev_m -> curr_m) ??? ? ???? ????
+
+        // ?? curr_m? ?? ?? prev_m?? ???? ?? prev_m->curr_m ??? ??
+        arbiter_mode = prev_m[1:0];
+        drive_random_ready();
+        channel_accept = channel_valid;
+        @(posedge clk);
+      end
+    end
+
+    // -------- 5. FIFO: simultaneous read/write ?? ?? --------
+    channel_accept = 0;
+    repeat (200) begin
+      drive_fifo_random();
+      @(posedge clk);
+    end
+
+    // -------- 6. FIFO overflow --------
+    drive_fifo_overflow();
+    @(posedge clk);
+
+    // -------- 7. FIFO underflow --------
+    rd_en = 1;
+    repeat (FIFO_DEPTH+2) @(posedge clk);
+    rd_en = 0;
+    @(posedge clk);
+    drive_fifo_underflow();
+
+    // -------- ?? ?? --------
+    $display("==============================================");
+    $display("Arbiter scoreboard: checks=%0d errors=%0d", sb_arb_checks, sb_arb_errors);
+    $display("FIFO   scoreboard: checks=%0d errors=%0d", sb_fifo_checks, sb_fifo_errors);
+    $display("---- Assertion-equivalent error counts (A1~A10) ----");
+    $display("A1=%0d A2=%0d A3=%0d A4=%0d A5=%0d A6=%0d A7=%0d A8=%0d A9=%0d A10=%0d",
+             err_A1, err_A2, err_A3, err_A4, err_A5, err_A6, err_A7, err_A8, err_A9, err_A10);
+    $display("---- Coverage-equivalent hit counts ----");
+    $display("mode RR=%0d Prio=%0d Wgt=%0d Dyn=%0d", cov_mode_rr, cov_mode_prio, cov_mode_wgt, cov_mode_dyn);
+    $display("all_channels_req=%0d no_channels_req=%0d reset_with_req=%0d",
+             cov_all_channels_req, cov_no_channels_req, cov_reset_with_req);
+    $display("fifo overflow_attempt=%0d underflow_attempt=%0d simul_rw=%0d almost_full=%0d",
+             cov_fifo_overflow_attempt, cov_fifo_underflow_attempt, cov_fifo_simul_rw, cov_fifo_almost_full);
+    $display("fifo count levels: empty=%0d low=%0d almost=%0d full=%0d",
+             cov_fifo_count_empty, cov_fifo_count_low, cov_fifo_count_almost, cov_fifo_count_full);
     begin
-        spi_cs_n = 0;
-        #(SPI_PERIOD);
-        spi_send_byte(8'h01);
-        spi_send_byte(addr[15:8]);
-        spi_send_byte(addr[7:0]);
-        spi_send_byte(data[31:24]);
-        spi_send_byte(data[23:16]);
-        spi_send_byte(data[15:8]);
-        spi_send_byte(data[7:0]);
-        #(SPI_PERIOD);
-        spi_cs_n = 1;
-        repeat(10) @(posedge clk);
+      int trans_hit;
+      trans_hit = 0;
+      for (int i = 0; i < 16; i++) if (cov_mode_transitions[i] > 0) trans_hit = trans_hit + 1;
+      $display("mode_transition bins hit: %0d / 16", trans_hit);
     end
-endtask
+    $display("==============================================");
 
-task spi_send_byte(input [7:0] data);
-    begin
-        for (int i = 7; i >= 0; i--) begin
-            spi_mosi = data[i];
-            #(SPI_PERIOD/2);
-            spi_sclk = 1;
-            #(SPI_PERIOD/2);
-            spi_sclk = 0;
-        end
-        #(SPI_PERIOD/4);
-    end
-endtask
+    if (sb_arb_errors==0 && sb_fifo_errors==0 &&
+        err_A1==0 && err_A2==0 && err_A3==0 && err_A4==0 && err_A5==0 &&
+        err_A6==0 && err_A7==0 && err_A8==0 && err_A9==0 && err_A10==0)
+      $display("TEST PASSED");
+    else
+      $display("TEST FAILED");
 
-task reset_system();
-    begin
-        rst_n = 0;
-        spi_sclk = 0;
-        spi_mosi = 0;
-        spi_cs_n = 1;
-        force_arbiter_signals = 0;
-        repeat(10) @(posedge clk);
-        rst_n = 1;
-        repeat(5) @(posedge clk);
-        $display("Reset complete\n");
-    end
-endtask
-
-// Arbiter stimulus task
-task test_arbiter_mode(input [1:0] mode, input string mode_name);
-    begin
-        $display("--- Arbiter Test: %s ---", mode_name);
-        
-        // Configure mode
-        spi_write_reg(16'h0008, {30'h0, mode});
-        repeat(20) @(posedge clk);
-        
-        // Force multiple channels ready to trigger comparison logic
-        force_arbiter_signals = 1;
-        
-        // Test Case 1: 4 channels ready
-        forced_channel_ready = 16'h000F; // Ch 0-3 ready
-        repeat(50) @(posedge clk);
-        $display("  4ch ready: selected=%0d, valid=%0b", 
-                 dut.arbiter_inst.selected_channel, dut.arbiter_inst.channel_valid);
-        
-        // Test Case 2: 8 channels ready
-        forced_channel_ready = 16'h00FF; // Ch 0-7 ready
-        repeat(50) @(posedge clk);
-        $display("  8ch ready: selected=%0d, valid=%0b", 
-                 dut.arbiter_inst.selected_channel, dut.arbiter_inst.channel_valid);
-        
-        // Test Case 3: All channels ready
-        forced_channel_ready = 16'hFFFF;
-        repeat(50) @(posedge clk);
-        $display("  16ch ready: selected=%0d, valid=%0b", 
-                 dut.arbiter_inst.selected_channel, dut.arbiter_inst.channel_valid);
-        
-        // Test Case 4: Sparse channels
-        forced_channel_ready = 16'h5555; // Alternating
-        repeat(50) @(posedge clk);
-        $display("  Sparse ready: selected=%0d, valid=%0b\n", 
-                 dut.arbiter_inst.selected_channel, dut.arbiter_inst.channel_valid);
-        
-        force_arbiter_signals = 0;
-        repeat(20) @(posedge clk);
-    end
-endtask
-
-// Main Test
-initial begin
-    $display("\n=== FIXED Coverage Test with Direct Stimulus ===\n");
-    
-    wait(data_loaded);
-    reset_system();
-    
-    // =========================================================================
-    // PART A: DIRECT ARBITER STIMULATION (for coverage)
-    // =========================================================================
-    
-    $display("\n========== PART A: ARBITER COVERAGE TESTS ==========\n");
-    
-    // Test 1: Mode 0 - Round Robin
-    begin : mode0_direct
-        spi_write_reg(16'h0004, 32'h0000_FFFF); // Enable all channels
-        test_arbiter_mode(2'b00, "Mode 0 Round-Robin");
-    end
-    
-    // Test 2: Mode 1 - Priority with Equal Priorities
-    begin : mode1_equal_priority
-        spi_write_reg(16'h0004, 32'h0000_FFFF);
-        
-        // Set equal priorities for some channels
-        for (int i = 0; i < 4; i++) begin
-            spi_write_reg(16'h0020 + (i*4), 32'h0000_0005); // Priority 5
-        end
-        for (int i = 4; i < 8; i++) begin
-            spi_write_reg(16'h0020 + (i*4), 32'h0000_0005); // Priority 5
-        end
-        
-        test_arbiter_mode(2'b01, "Mode 1 Priority Equal");
-    end
-    
-    // Test 3: Mode 1 - Different Priorities
-    begin : mode1_diff_priority
-        // Ascending priorities
-        for (int i = 0; i < 8; i++) begin
-            spi_write_reg(16'h0020 + (i*4), 32'h0000_0000 + i);
-        end
-        
-        test_arbiter_mode(2'b01, "Mode 1 Priority Different");
-    end
-    
-    // Test 4: Mode 1 - Descending Priorities
-    begin : mode1_desc_priority
-        for (int i = 0; i < 8; i++) begin
-            spi_write_reg(16'h0020 + (i*4), 32'h0000_000F - i);
-        end
-        
-        test_arbiter_mode(2'b01, "Mode 1 Priority Descending");
-    end
-    
-    // Test 5: Mode 2 - Weighted Equal
-    begin : mode2_equal_weight
-        for (int i = 0; i < 8; i++) begin
-            spi_write_reg(16'h0040 + (i*4), 32'h0000_0010); // Weight 16
-        end
-        
-        test_arbiter_mode(2'b10, "Mode 2 Weighted Equal");
-    end
-    
-    // Test 6: Mode 2 - Weighted Different
-    begin : mode2_diff_weight
-        spi_write_reg(16'h0040, 32'h0000_0001); // Ch0: 1
-        spi_write_reg(16'h0044, 32'h0000_0080); // Ch1: 128
-        spi_write_reg(16'h0048, 32'h0000_0040); // Ch2: 64
-        spi_write_reg(16'h004C, 32'h0000_0020); // Ch3: 32
-        
-        test_arbiter_mode(2'b10, "Mode 2 Weighted Different");
-    end
-    
-    // Test 7: Mode 2 - Zero Weights
-    begin : mode2_zero_weight
-        spi_write_reg(16'h0040, 32'h0000_0000); // Ch0: 0
-        spi_write_reg(16'h0044, 32'h0000_0001); // Ch1: 1
-        spi_write_reg(16'h0048, 32'h0000_0000); // Ch2: 0
-        spi_write_reg(16'h004C, 32'h0000_0001); // Ch3: 1
-        
-        test_arbiter_mode(2'b10, "Mode 2 Zero Weight");
-    end
-    
-    // Test 8: Mode 3 - Dynamic with Urgent
-    begin : mode3_urgent
-        spi_write_reg(16'h000C, 32'h0000_0006); // Ch1, Ch2 urgent
-        
-        test_arbiter_mode(2'b11, "Mode 3 Dynamic Urgent");
-    end
-    
-    // Test 9: Mode 3 - Dynamic No Urgent (fallback to weighted)
-    begin : mode3_no_urgent
-        spi_write_reg(16'h000C, 32'h0000_0000); // No urgent
-        spi_write_reg(16'h0040, 32'h0000_0010);
-        spi_write_reg(16'h0044, 32'h0000_0020);
-        spi_write_reg(16'h0048, 32'h0000_0030);
-        
-        test_arbiter_mode(2'b11, "Mode 3 Dynamic Fallback");
-    end
-    
-    // Test 10: Mode 3 - Multiple Urgent
-    begin : mode3_multi_urgent
-        spi_write_reg(16'h000C, 32'h0000_00FF); // All urgent
-        
-        test_arbiter_mode(2'b11, "Mode 3 Multi Urgent");
-    end
-    
-    // Test 11: Channel Enable Runtime Change
-    begin : runtime_enable_change
-        $display("--- Test: Runtime Enable Change ---");
-        
-        force_arbiter_signals = 1;
-        spi_write_reg(16'h0008, 32'h0000_0000); // Mode 0
-        
-        // Change enable mask during operation
-        spi_write_reg(16'h0004, 32'h0000_000F); // Ch 0-3
-        forced_channel_ready = 16'h000F;
-        repeat(50) @(posedge clk);
-        
-        spi_write_reg(16'h0004, 32'h0000_00F0); // Ch 4-7
-        forced_channel_ready = 16'h00F0;
-        repeat(50) @(posedge clk);
-        
-        spi_write_reg(16'h0004, 32'h0000_FFFF); // All
-        forced_channel_ready = 16'hFFFF;
-        repeat(50) @(posedge clk);
-        
-        $display("  Runtime enable change complete\n");
-        force_arbiter_signals = 0;
-    end
-    
-    // =========================================================================
-    // PART B: NORMAL OPERATION TESTS (functional verification)
-    // =========================================================================
-    
-    $display("\n========== PART B: FUNCTIONAL TESTS ==========\n");
-    
-    // Test 12: Normal Mode 0 Operation
-    begin : normal_mode0
-        $display("--- Test: Normal Mode 0 Operation ---");
-        spi_write_reg(16'h0008, 32'h0000_0000);
-        spi_write_reg(16'h0000, 32'h0000_0001); // Enable system
-        spi_write_reg(16'h0004, 32'h0000_000F); // Ch 0-3
-        
-        repeat(5000) @(posedge clk);
-        $display("  Samples collected: %0d\n", total_samples);
-        
-        spi_write_reg(16'h0000, 32'h0000_0000); // Stop
-        repeat(1000) @(posedge clk);
-    end
-    
-    // Test 13: FIFO Fill Test
-    begin : fifo_fill_test
-        $display("--- Test: FIFO Fill Levels ---");
-        
-        spi_write_reg(16'h0000, 32'h0000_0001);
-        spi_write_reg(16'h0004, 32'h0000_FFFF); // All channels
-        
-        // Monitor FIFO levels
-        fork
-            begin
-                wait(dut.fifo_inst.fifo_count >= 32);
-                $display("  FIFO L1 threshold reached: %0d", dut.fifo_inst.fifo_count);
-            end
-            begin
-                wait(dut.fifo_inst.fifo_count >= 160);
-                $display("  FIFO L2 threshold reached: %0d", dut.fifo_inst.fifo_count);
-            end
-            begin
-                wait(dut.fifo_inst.fifo_count >= 400);
-                $display("  FIFO L3 threshold reached: %0d", dut.fifo_inst.fifo_count);
-            end
-            begin
-                repeat(10000) @(posedge clk);
-            end
-        join_any
-        disable fork;
-        
-        $display("  Final FIFO count: %0d\n", dut.fifo_inst.fifo_count);
-        
-        spi_write_reg(16'h0000, 32'h0000_0000);
-        repeat(3000) @(posedge clk);
-    end
-    
-    repeat(100) @(posedge clk);
-    
-    // Summary
-    $display("\n=== FIXED Coverage Test Summary ===");
-    $display("Total Samples: %0d", total_samples);
-    $display("Errors: %0d", error_count);
-    $display("\n*** COVERAGE TEST COMPLETE ***\n");
-    
-    $stop;
-end
-
-initial begin
-    #20000000; // 20ms timeout
-    $display("\n!!! TIMEOUT !!!");
-    $display("Total samples: %0d", total_samples);
-    $stop;
-end
+    $finish;
+  end
 
 endmodule
+
+

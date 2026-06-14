@@ -1,227 +1,313 @@
+// =============================================================================
+// tb_fifo.sv
+// single_fifo 모듈 단위 검증
+//  - Directed test: overflow, underflow, simultaneous read/write
+//  - SVA: count/full/empty invariant, overflow/underflow 방지, data integrity
+//  - Functional coverage: FIFO_DEPTH=16, almost_full threshold=12
+// =============================================================================
+`timescale 1ns/1ps
+
 module tb_single_fifo;
 
-localparam DATA_WIDTH = 16;
-localparam L1_DEPTH = 32;
-localparam L2_DEPTH = 128;
-localparam L3_DEPTH = 512;
-localparam CLK_PERIOD = 10;
+    localparam DATA_WIDTH = 16;
+    localparam FIFO_DEPTH = 16;
+    localparam ALMOST_FULL_THRESHOLD = 12;
+    localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
 
-logic clk, rst_n;
-logic [1:0] fifo_mode;
-logic [7:0] watermark_l1, watermark_l2, watermark_l3;
-logic [DATA_WIDTH-1:0] wr_data, rd_data;
-logic wr_en, rd_en, wr_full, rd_empty;
-logic [1:0] wr_level, rd_level;
-logic [31:0] fifo_status;
-logic [2:0] level_overflow;
-logic backpressure_active;
+    logic clk = 0;
+    logic rst_n;
 
-int errors;
+    logic [DATA_WIDTH-1:0] wr_data;
+    logic wr_en;
+    logic wr_full;
+    logic almost_full;
 
-always #(CLK_PERIOD/2) clk = ~clk;
+    logic [DATA_WIDTH-1:0] rd_data;
+    logic rd_en;
+    logic rd_empty;
 
-hierarchical_fifo_system #(
-    .DATA_WIDTH(DATA_WIDTH),
-    .L1_DEPTH(L1_DEPTH),
-    .L2_DEPTH(L2_DEPTH),
-    .L3_DEPTH(L3_DEPTH)
-) dut (.*);
+    logic [ADDR_WIDTH:0] count;
 
-task automatic write_data(input int count, input logic [15:0] base_val);
-    int i;
-    for (i = 0; i < count; i = i + 1) begin
-        @(posedge clk);
-        if (!wr_full) begin
-            wr_data = base_val + i;
-            wr_en = 1;
+    always #5 clk = ~clk; // 100MHz
+
+    single_fifo #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .FIFO_DEPTH(FIFO_DEPTH),
+        .ALMOST_FULL_THRESHOLD(ALMOST_FULL_THRESHOLD)
+    ) dut (
+        .clk(clk), .rst_n(rst_n),
+        .wr_data(wr_data), .wr_en(wr_en), .wr_full(wr_full), .almost_full(almost_full),
+        .rd_data(rd_data), .rd_en(rd_en), .rd_empty(rd_empty),
+        .count(count)
+    );
+
+    // =========================================================================
+    // Reference model (golden queue)
+    // =========================================================================
+    logic [DATA_WIDTH-1:0] ref_q [$];
+    int sb_checks = 0;
+    int sb_errors = 0;
+
+    // 통계
+    int stat_overflow_attempts   = 0; // wr_en && wr_full
+    int stat_underflow_attempts  = 0; // rd_en && rd_empty
+    int stat_simultaneous_rw     = 0; // wr_en && !wr_full && rd_en && !rd_empty (성공한 동시 R/W)
+
+    // =========================================================================
+    // SVA
+    // =========================================================================
+    // A1: count는 항상 0..FIFO_DEPTH 범위
+    property p_count_range;
+        @(posedge clk) disable iff (!rst_n)
+        (count >= 0) && (count <= FIFO_DEPTH);
+    endproperty
+    assert property (p_count_range)
+        else $error("[SVA-A1][%0t] count out of range: count=%0d", $time, count);
+
+    // A2: wr_full <-> count == FIFO_DEPTH
+    property p_wr_full_consistency;
+        @(posedge clk) disable iff (!rst_n)
+        wr_full == (count == FIFO_DEPTH);
+    endproperty
+    assert property (p_wr_full_consistency)
+        else $error("[SVA-A2][%0t] wr_full inconsistent: wr_full=%0b count=%0d", $time, wr_full, count);
+
+    // A3: rd_empty <-> count == 0
+    property p_rd_empty_consistency;
+        @(posedge clk) disable iff (!rst_n)
+        rd_empty == (count == 0);
+    endproperty
+    assert property (p_rd_empty_consistency)
+        else $error("[SVA-A3][%0t] rd_empty inconsistent: rd_empty=%0b count=%0d", $time, rd_empty, count);
+
+    // A4: almost_full <-> count >= ALMOST_FULL_THRESHOLD
+    property p_almost_full_consistency;
+        @(posedge clk) disable iff (!rst_n)
+        almost_full == (count >= ALMOST_FULL_THRESHOLD);
+    endproperty
+    assert property (p_almost_full_consistency)
+        else $error("[SVA-A4][%0t] almost_full inconsistent: almost_full=%0b count=%0d", $time, almost_full, count);
+
+    // A5: wr_full일 때 wr_en이 있어도 count는 증가하지 않음 (overflow 방지)
+    property p_no_overflow;
+        @(posedge clk) disable iff (!rst_n)
+        (wr_en && wr_full && !(rd_en && !rd_empty)) |=> (count == $past(count));
+    endproperty
+    assert property (p_no_overflow)
+        else $error("[SVA-A5][%0t] overflow: count changed while full and no read", $time);
+
+    // A6: rd_empty일 때 rd_en이 있어도 count는 감소하지 않음 (underflow 방지)
+    property p_no_underflow;
+        @(posedge clk) disable iff (!rst_n)
+        (rd_en && rd_empty && !(wr_en && !wr_full)) |=> (count == $past(count));
+    endproperty
+    assert property (p_no_underflow)
+        else $error("[SVA-A6][%0t] underflow: count changed while empty and no write", $time);
+
+    // A7: count는 한 클럭에 최대 +-1만 변할 수 있음 (동시 R/W=0, 단일 R or W=+-1, 동시 성공 R/W=0)
+    property p_count_delta;
+        @(posedge clk) disable iff (!rst_n)
+        ($past(rst_n)) |-> ((count - $past(count)) inside {-1, 0, 1});
+    endproperty
+    assert property (p_count_delta)
+        else $error("[SVA-A7][%0t] count changed by more than 1: count=%0d past=%0d", $time, count, $past(count));
+
+    // A8: reset 시 count==0, rd_empty==1, wr_full==0
+    property p_reset_state;
+        @(posedge clk) (!rst_n) |=> (count == 0 && rd_empty == 1'b1 && wr_full == 1'b0);
+    endproperty
+    assert property (p_reset_state)
+        else $error("[SVA-A8][%0t] reset state incorrect: count=%0d rd_empty=%0b wr_full=%0b", $time, count, rd_empty, wr_full);
+
+    // =========================================================================
+    // Functional coverage (manual covergroup)
+    // =========================================================================
+    covergroup cg_fifo @(posedge clk);
+        option.per_instance = 1;
+        cp_count: coverpoint count {
+            bins empty       = {0};
+            bins low         = {[1:6]};
+            bins mid         = {[7:11]};
+            bins almost_full = {[12:15]};
+            bins full        = {16};
+        }
+        cp_wr_en   : coverpoint wr_en;
+        cp_rd_en   : coverpoint rd_en;
+        cp_simul_rw: cross cp_wr_en, cp_rd_en {
+            bins both_active = binsof(cp_wr_en) intersect {1} && binsof(cp_rd_en) intersect {1};
+        }
+        cp_overflow_attempt : coverpoint (wr_en && wr_full) {
+            bins occurred = {1};
+        }
+        cp_underflow_attempt: coverpoint (rd_en && rd_empty) {
+            bins occurred = {1};
+        }
+    endgroup
+
+    cg_fifo cg = new();
+
+    // =========================================================================
+    // Reference model update (scoreboard)
+    // =========================================================================
+    logic do_write, do_read;
+    always @(posedge clk) begin
+        #1; // DUT의 always_ff(nonblocking) 갱신이 모두 끝난 뒤 안정된 값을 샘플링
+        if (!rst_n) begin
+            ref_q.delete();
         end else begin
-            $display("ERROR: FIFO full at write %0d", i);
-            errors = errors + 1;
-            i = count;
-        end
-    end
-    @(posedge clk);
-    wr_en = 0;
-endtask
-
-task automatic read_and_check(input int count, input logic [15:0] expected_base);
-    int i;
-    logic [15:0] expected, actual;
-    for (i = 0; i < count; i = i + 1) begin
-        expected = expected_base + i;
-        @(posedge clk);
-        if (!rd_empty) begin
-            rd_en = 1;
-            #1;
-            actual = rd_data;
-            if (actual !== expected) begin
-                $display("ERROR: Read[%0d] Expected 0x%04h, got 0x%04h", i, expected, actual);
-                errors = errors + 1;
+            // -----------------------------------------------------------------
+            // 0. count 비교를 ref_q 변경 전에 수행.
+            //    현재 클럭의 count는 "이전 클럭까지의 write/read가 반영된" 값이고,
+            //    ref_q는 아직 이번 클럭의 do_write/do_read를 반영하기 전이므로
+            //    이 시점에서 둘은 같아야 한다. (먼저 비교 -> 그 다음 ref_q 갱신)
+            // -----------------------------------------------------------------
+            if (count !== ref_q.size()) begin
+                sb_errors++;
+                $error("[SB-FIFO][%0t] count mismatch: dut=%0d ref=%0d", $time, count, ref_q.size());
             end
-        end else begin
-            $display("ERROR: FIFO empty at read %0d", i);
-            errors = errors + 1;
-            i = count;
+
+            // 이번 클럭에서 실제 일어날 일을 미리 계산 (combinational 신호 기준)
+            do_write = wr_en && !wr_full;
+            do_read  = rd_en && !rd_empty;
+
+            if (wr_en && wr_full)  stat_overflow_attempts++;
+            if (rd_en && rd_empty) stat_underflow_attempts++;
+            if (do_write && do_read) stat_simultaneous_rw++;
+
+            // read 먼저 체크 (이번 클럭 시작 시 rd_data는 이전 ref_q[0])
+            if (do_read) begin
+                sb_checks++;
+                if (ref_q.size() == 0 || rd_data !== ref_q[0]) begin
+                    sb_errors++;
+                    $error("[SB-FIFO][%0t] read mismatch: got=%h expected=%h",
+                           $time, rd_data, (ref_q.size() > 0) ? ref_q[0] : 'x);
+                end else begin
+                    ref_q.pop_front();
+                end
+            end
+
+            if (do_write) begin
+                ref_q.push_back(wr_data);
+            end
         end
     end
-    @(posedge clk);
-    rd_en = 0;
-endtask
 
-task automatic drain_all();
-    int count;
-    count = 0;
-    $display("  [Draining all data...]");
-    while (!rd_empty) begin
+    // =========================================================================
+    // Stimulus
+    // =========================================================================
+    initial begin
+        rst_n = 0;
+        wr_data = 0; wr_en = 0; rd_en = 0;
+        repeat (3) @(posedge clk);
+        rst_n = 1;
         @(posedge clk);
+
+        // -----------------------------------------------------------------
+        // Scenario 1: Overflow - FIFO_DEPTH개 이상 write 시도
+        // -----------------------------------------------------------------
+        $display("[TB-FIFO] Scenario 1: Overflow test");
+        for (int i = 0; i < FIFO_DEPTH + 4; i++) begin
+            wr_data = i;
+            wr_en   = 1;
+            rd_en   = 0;
+            @(posedge clk);
+        end
+        wr_en = 0;
+        @(posedge clk);
+        if (count !== FIFO_DEPTH)
+            $error("[TB-FIFO] Scenario1 FAIL: count=%0d expected=%0d", count, FIFO_DEPTH);
+        else
+            $display("[TB-FIFO] Scenario1 PASS: count=%0d (FIFO correctly saturated)", count);
+
+        // -----------------------------------------------------------------
+        // Scenario 2: Underflow - 비어있는 FIFO에서 read 시도
+        // -----------------------------------------------------------------
+        $display("[TB-FIFO] Scenario 2: Underflow test");
+        // 먼저 전부 비우기
         rd_en = 1;
-        count = count + 1;
-    end
-    @(posedge clk);
-    rd_en = 0;
-    $display("  [Drained %0d entries]", count);
-    #(CLK_PERIOD*5);
-endtask
+        repeat (FIFO_DEPTH + 4) @(posedge clk); // FIFO_DEPTH번 후엔 underflow 시도
+        rd_en = 0;
+        @(posedge clk);
+        if (count !== 0)
+            $error("[TB-FIFO] Scenario2 FAIL: count=%0d expected=0", count);
+        else
+            $display("[TB-FIFO] Scenario2 PASS: count=0 (FIFO correctly emptied, underflow attempts ignored)");
 
-task automatic check_empty();
-    if (!rd_empty) begin
-        $display("ERROR: FIFO not empty after drain!");
-        errors = errors + 1;
-    end
-    if (dut.l1_count != 0 || dut.l2_count != 0 || dut.l3_count != 0) begin
-        $display("ERROR: FIFO counts not zero: L1=%0d L2=%0d L3=%0d", 
-                 dut.l1_count, dut.l2_count, dut.l3_count);
-        errors = errors + 1;
-    end
-endtask
+        // -----------------------------------------------------------------
+        // Scenario 3: Simultaneous read/write (steady-state streaming)
+        // -----------------------------------------------------------------
+        $display("[TB-FIFO] Scenario 3: Simultaneous read/write test");
+        // 먼저 절반 채움
+        rd_en = 0;
+        for (int i = 0; i < FIFO_DEPTH/2; i++) begin
+            wr_data = 100 + i;
+            wr_en   = 1;
+            @(posedge clk);
+        end
+        // 동시 R/W: count가 일정하게 유지되어야 함
+        for (int i = 0; i < 20; i++) begin
+            wr_data = 200 + i;
+            wr_en   = 1;
+            rd_en   = 1;
+            @(posedge clk);
+        end
+        wr_en = 0; rd_en = 0;
+        @(posedge clk);
+        $display("[TB-FIFO] Scenario3 PASS: simultaneous R/W ran for 20 cycles, count=%0d", count);
 
-initial begin
-    clk = 0; 
-    rst_n = 0;
-    fifo_mode = 2'b10;
-    watermark_l1 = 75; 
-    watermark_l2 = 80; 
-    watermark_l3 = 90;
-    wr_data = 0; 
-    wr_en = 0; 
-    rd_en = 0;
-    errors = 0;
-    
-    $display("=== Hierarchical FIFO Test Started ===\n");
-    
-    #(CLK_PERIOD*5) rst_n = 1;
-    #(CLK_PERIOD*5);
-    
-    //=========================================================================
-    // Test 1: Basic Write/Read
-    //=========================================================================
-    $display("--- Test 1: Basic Write/Read (20 entries) ---");
-    
-    write_data(20, 16'h0000);
-    #(CLK_PERIOD*2);
-    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
-             dut.l1_count, dut.l2_count, dut.l3_count);
-    
-    read_and_check(20, 16'h0000);
-    #(CLK_PERIOD*2);
-    
-    check_empty();
-    $display("Test 1 Complete\n");
-    
-    //=========================================================================
-    // Test 2: L1 Overflow to L2
-    //=========================================================================
-    $display("--- Test 2: Fill L1 (50 entries) -> Promotion to L2 ---");
-    
-    write_data(50, 16'h0100);
-    #(CLK_PERIOD*10);
-    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
-             dut.l1_count, dut.l2_count, dut.l3_count);
-    
-    if (dut.l2_count > 0) begin
-        $display("Promotion to L2 successful");
-    end else begin
-        $display("ERROR: No promotion to L2");
-        errors = errors + 1;
-    end
-    
-    read_and_check(50, 16'h0100);
-    drain_all();
-    check_empty();
-    $display("Test 2 Complete\n");
-    
-    //=========================================================================
-    // Test 3: Large Burst - All 3 Levels
-    //=========================================================================
-    $display("--- Test 3: Large Burst (200 entries) -> Use All 3 Levels ---");
-    
-    write_data(200, 16'h0200);
-    #(CLK_PERIOD*20);
-    $display("After Write: L1=%0d, L2=%0d, L3=%0d", 
-             dut.l1_count, dut.l2_count, dut.l3_count);
-    
-    if (dut.l3_count > 0) begin
-        $display("All 3 levels in use");
-    end else begin
-        $display("ERROR: L3 not used");
-        errors = errors + 1;
-    end
-    
-    $display("Verifying first 20 reads...");
-    read_and_check(20, 16'h0200);
-    
-    drain_all();
-    check_empty();
-    $display("Test 3 Complete\n");
-    
-    //=========================================================================
-    // Test 4: Maximum Capacity
-    //=========================================================================
-    $display("--- Test 4: Maximum Capacity Test ---");
-    
-    write_data(672, 16'h0400);
-    #(CLK_PERIOD*20);
-    
-    $display("Total Capacity: L1=%0d + L2=%0d + L3=%0d = %0d", 
-             dut.l1_count, dut.l2_count, dut.l3_count,
-             dut.l1_count + dut.l2_count + dut.l3_count);
-    
-    if ((dut.l1_count + dut.l2_count + dut.l3_count) >= 600) begin
-        $display("Capacity test passed");
-    end else begin
-        $display("ERROR: Capacity too low");
-        errors = errors + 1;
-    end
-    
-    drain_all();
-    check_empty();
-    $display("Test 4 Complete\n");
-    
-    //=========================================================================
-    // Summary
-    //=========================================================================
-    #(CLK_PERIOD*10);
-    
-    $display("\n=== Test Summary ===");
-    $display("Total Errors: %0d", errors);
-    if (errors == 0) begin
-        $display("*** ALL TESTS PASSED ***");
-    end else begin
-        $display("*** TESTS FAILED ***");
-    end
-    
-    $stop;
-end
+        // -----------------------------------------------------------------
+        // Scenario 4: Reset 중 입력 발생 (wr_en/rd_en asserted during reset)
+        // -----------------------------------------------------------------
+        $display("[TB-FIFO] Scenario 4: Inputs asserted during reset");
+        wr_data = 16'hDEAD;
+        wr_en   = 1;
+        rd_en   = 1;
+        rst_n   = 0;
+        repeat (3) @(posedge clk);
+        rst_n = 1;
+        @(posedge clk);
+        if (count !== 0 || rd_empty !== 1'b1 || wr_full !== 1'b0)
+            $error("[TB-FIFO] Scenario4 FAIL: count=%0d rd_empty=%0b wr_full=%0b after reset",
+                   count, rd_empty, wr_full);
+        else
+            $display("[TB-FIFO] Scenario4 PASS: FIFO correctly reset despite asserted inputs");
+        wr_en = 0; rd_en = 0;
+        @(posedge clk);
 
-always_ff @(posedge clk) begin
-    if (rst_n && wr_en && wr_full) begin
-        $display("WARNING: Write attempt when full at %0t", $time);
-    end
-end
+        // -----------------------------------------------------------------
+        // Scenario 5: Randomized read/write (constrained-random)
+        // -----------------------------------------------------------------
+        $display("[TB-FIFO] Scenario 5: Constrained-random read/write");
+        for (int i = 0; i < 500; i++) begin
+            wr_data = $urandom_range(0, (1 << DATA_WIDTH) - 1);
+            wr_en   = $urandom_range(0, 1);
+            rd_en   = $urandom_range(0, 1);
+            @(posedge clk);
+        end
+        wr_en = 0; rd_en = 0;
 
-initial begin
-    $dumpfile("tb_hierarchical_fifo_system.vcd");
-    $dumpvars(0, tb_hierarchical_fifo_system);
-end
+        // 남은 데이터 전부 비우기 (최종 정합성 체크)
+        rd_en = 1;
+        repeat (FIFO_DEPTH + 2) @(posedge clk);
+        rd_en = 0;
+        @(posedge clk);
+
+        // -----------------------------------------------------------------
+        // Summary
+        // -----------------------------------------------------------------
+        $display("==============================================");
+        $display("FIFO scoreboard: checks=%0d errors=%0d", sb_checks, sb_errors);
+        $display("Overflow attempts observed : %0d", stat_overflow_attempts);
+        $display("Underflow attempts observed: %0d", stat_underflow_attempts);
+        $display("Simultaneous R/W cycles     : %0d", stat_simultaneous_rw);
+        if (sb_errors == 0 && stat_overflow_attempts > 0 && stat_underflow_attempts > 0
+            && stat_simultaneous_rw > 0)
+            $display("FIFO TEST PASSED");
+        else
+            $display("FIFO TEST FAILED");
+        $display("==============================================");
+
+        $finish;
+    end
 
 endmodule

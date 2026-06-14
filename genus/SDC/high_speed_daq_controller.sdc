@@ -1,0 +1,8 @@
+create_clock -name clk -period 15 [get_ports clk]
+set_clock_uncertainty 2 [get_clocks clk]
+set_clock_transition -rise -min 1.25 [get_clks clk]
+set_clock_transition -rise -max 2 [get_clks clk]
+set_clock_transition -fall -min 1.25 [get_clks clk]
+set_clock_transition -fall -max 2 [get_clks clk]
+set_max_capacitance 2 [all_outputs]
+set_max_fanout 10 [all_inputs]

@@ -1,0 +1,148 @@
+// =============================================================================
+// derivative_threshold_engine
+//  - 변경점: 없음 (8채널 default만 맞춤)
+// =============================================================================
+module derivative_threshold_engine #(
+    parameter NUM_CHANNELS = 8,
+    parameter ADC_WIDTH = 12,
+    parameter CHANNEL_WIDTH = $clog2(NUM_CHANNELS),
+    parameter CONFIG_REGS = 8
+)(
+    input  logic clk,
+    input  logic rst_n,
+
+    input  logic [ADC_WIDTH-1:0] data_in,
+    input  logic [CHANNEL_WIDTH-1:0] channel_in,
+    input  logic data_valid,
+
+    input  logic [31:0] config_reg [CONFIG_REGS-1:0],
+
+    output logic trigger_out,
+    output logic [7:0] trigger_confidence,
+    output logic [15:0] trigger_metadata,
+    output logic trigger_valid
+);
+
+localparam CFG_THRESHOLD_LOW   = 0;
+localparam CFG_THRESHOLD_HIGH  = 1;
+localparam CFG_DERIVATIVE_EN   = 2;
+localparam CFG_CHANNEL_MASK    = 3;
+localparam CFG_CONFIDENCE_MIN  = 4;
+localparam CFG_FILTER_WINDOW   = 5;
+
+logic [ADC_WIDTH-1:0] prev_sample [NUM_CHANNELS-1:0];
+logic [NUM_CHANNELS-1:0] sample_valid_history;
+
+logic [ADC_WIDTH-1:0] data_reg;
+logic [CHANNEL_WIDTH-1:0] channel_reg;
+logic data_valid_reg;
+
+logic signed [ADC_WIDTH:0] derivative;
+logic [ADC_WIDTH-1:0] abs_derivative;
+logic derivative_overflow;
+
+logic threshold_trigger, derivative_trigger;
+logic channel_enabled, derivative_enabled;
+logic [7:0] calculated_confidence;
+logic [15:0] calculated_metadata;
+
+logic [3:0] trigger_history [NUM_CHANNELS-1:0];
+logic [7:0] recent_trigger_count;
+logic false_positive_filter;
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        data_reg <= '0; channel_reg <= '0; data_valid_reg <= 1'b0;
+        sample_valid_history <= '0;
+    end else begin
+        data_reg <= data_in;
+        channel_reg <= channel_in;
+        data_valid_reg <= data_valid;
+        if (data_valid && channel_in < NUM_CHANNELS)
+            sample_valid_history[channel_in] <= 1'b1;
+    end
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) prev_sample[i] <= '0;
+        derivative <= '0; derivative_overflow <= 1'b0;
+    end else if (data_valid_reg && channel_reg < NUM_CHANNELS) begin
+        derivative <= $signed({1'b0, data_reg}) - $signed({1'b0, prev_sample[channel_reg]});
+        prev_sample[channel_reg] <= data_reg;
+        derivative_overflow <= (derivative > 2**ADC_WIDTH-1) || (derivative < -(2**ADC_WIDTH-1));
+    end
+end
+
+always_comb begin
+    if (derivative < 0)
+        abs_derivative = (-derivative > 2**ADC_WIDTH-1) ? (2**ADC_WIDTH-1) : -derivative[ADC_WIDTH-1:0];
+    else
+        abs_derivative = (derivative > 2**ADC_WIDTH-1) ? (2**ADC_WIDTH-1) : derivative[ADC_WIDTH-1:0];
+end
+
+always_comb begin
+    channel_enabled    = config_reg[CFG_CHANNEL_MASK][channel_reg] && sample_valid_history[channel_reg];
+    derivative_enabled = config_reg[CFG_DERIVATIVE_EN][channel_reg];
+end
+
+always_comb begin
+    threshold_trigger  = channel_enabled && (data_reg > config_reg[CFG_THRESHOLD_LOW][ADC_WIDTH-1:0]);
+    derivative_trigger = channel_enabled && derivative_enabled &&
+                          (abs_derivative > config_reg[CFG_THRESHOLD_HIGH][ADC_WIDTH-1:0]);
+end
+
+always_comb begin
+    automatic logic [7:0] amplitude_factor, derivative_factor;
+    amplitude_factor  = data_reg[ADC_WIDTH-1:ADC_WIDTH-7];
+    derivative_factor = abs_derivative[ADC_WIDTH-1:ADC_WIDTH-7];
+    if (amplitude_factor + derivative_factor > 255) calculated_confidence = 8'd255;
+    else calculated_confidence = amplitude_factor + derivative_factor;
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        for (int i = 0; i < NUM_CHANNELS; i++) trigger_history[i] <= 4'b0000;
+        recent_trigger_count <= 8'b0;
+    end else if (data_valid_reg && channel_reg < NUM_CHANNELS) begin
+        automatic logic new_trigger;
+        new_trigger = threshold_trigger || derivative_trigger;
+        trigger_history[channel_reg] <= {trigger_history[channel_reg][2:0], new_trigger};
+        recent_trigger_count <= trigger_history[channel_reg][3] + trigger_history[channel_reg][2] +
+                                 trigger_history[channel_reg][1] + trigger_history[channel_reg][0] + new_trigger;
+    end
+end
+
+always_comb begin
+    automatic logic [7:0] max_triggers_per_window, min_confidence;
+    max_triggers_per_window = config_reg[CFG_FILTER_WINDOW][7:0];
+    min_confidence = config_reg[CFG_CONFIDENCE_MIN][7:0];
+    false_positive_filter = (recent_trigger_count <= max_triggers_per_window) &&
+                             (calculated_confidence >= min_confidence);
+end
+
+always_comb begin
+    calculated_metadata = {
+        threshold_trigger, derivative_trigger, derivative_overflow,
+        false_positive_filter, channel_reg, calculated_confidence[7:0]
+    };
+end
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        trigger_out <= 1'b0; trigger_confidence <= 8'b0;
+        trigger_metadata <= 16'b0; trigger_valid <= 1'b0;
+    end else begin
+        automatic logic final_trigger;
+        final_trigger = (threshold_trigger || derivative_trigger) && false_positive_filter && channel_enabled;
+        trigger_out <= final_trigger;
+        trigger_confidence <= calculated_confidence;
+        trigger_metadata <= calculated_metadata;
+        trigger_valid <= data_valid_reg && final_trigger;
+    end
+end
+
+endmodule
+
+
+

@@ -1,0 +1,541 @@
+Coverage Report by instance with details
+
+=================================================================================
+=== Instance: /tb_configurable_arbiter
+=== Design Unit: work.tb_configurable_arbiter
+=================================================================================
+
+Assertion Coverage:
+    Assertions                       9         9         0   100.00%
+--------------------------------------------------------------------
+Name                 File(Line)                   Failure      Pass 
+                                                  Count        Count
+--------------------------------------------------------------------
+/tb_configurable_arbiter/assert__p_priority_mode_is_max
+                     tb_configurable_arbiter.sv(144)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_dynamic_urgent_priority
+                     tb_configurable_arbiter.sv(118)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_rr_counter_increments
+                     tb_configurable_arbiter.sv(107)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_reset_weight_acc
+                     tb_configurable_arbiter.sv(98)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_reset_rr_counter
+                     tb_configurable_arbiter.sv(90)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_no_valid_if_none_ready
+                     tb_configurable_arbiter.sv(83)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_no_valid_while_busy
+                     tb_configurable_arbiter.sv(75)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_valid_implies_enabled_ready
+                     tb_configurable_arbiter.sv(66)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_selected_channel_range
+                     tb_configurable_arbiter.sv(58)
+                                                        0          1
+Branch Coverage:
+    Enabled Coverage              Bins      Hits    Misses  Coverage
+    ----------------              ----      ----    ------  --------
+    Branches                        12         9         3    75.00%
+
+================================Branch Details================================
+
+Branch Coverage for instance /tb_configurable_arbiter
+
+    Line         Item                      Count     Source 
+    ----         ----                      -----     ------ 
+  File tb_configurable_arbiter.sv
+------------------------------------IF Branch------------------------------------
+    105                                       73     Count coming in to IF
+    105             1                          9     
+    105             2                         64     
+Branch totals: 2 hits of 2 branches = 100.00%
+
+------------------------------------IF Branch------------------------------------
+    135                                     2456     Count coming in to IF
+    135             1                        520     
+                                            1936     All False Count
+Branch totals: 2 hits of 2 branches = 100.00%
+
+------------------------------------IF Branch------------------------------------
+    193                                        8     Count coming in to IF
+    193             1                          4     
+    193             2                          4     
+Branch totals: 2 hits of 2 branches = 100.00%
+
+------------------------------------IF Branch------------------------------------
+    233                                        1     Count coming in to IF
+    233             1                    ***0***     
+    235             1                          1     
+Branch totals: 1 hit of 2 branches = 50.00%
+
+------------------------------------IF Branch------------------------------------
+    283                                        1     Count coming in to IF
+    283             1                    ***0***     
+    286             1                          1     
+Branch totals: 1 hit of 2 branches = 50.00%
+
+------------------------------------IF Branch------------------------------------
+    302                                        1     Count coming in to IF
+    302             1                    ***0***     
+    304             1                          1     
+Branch totals: 1 hit of 2 branches = 50.00%
+
+
+Condition Coverage:
+    Enabled Coverage              Bins   Covered    Misses  Coverage
+    ----------------              ----      ----    ------  --------
+    Conditions                       8         5         3    62.50%
+
+================================Condition Details================================
+
+Condition Coverage for instance /tb_configurable_arbiter --
+
+  File tb_configurable_arbiter.sv
+----------------Focused Condition View-------------------
+Line       105 Item    1  ($past(dut.rr_counter) == (8 - 1))
+Condition totals: 1 of 1 input term covered = 100.00%
+
+----------------Focused Condition View-------------------
+Line       135 Item    1  ((channel_enable[i] && channel_ready[i]) && (channel_priority[i] > max_priority_now))
+Condition totals: 3 of 3 input terms covered = 100.00%
+
+----------------Focused Condition View-------------------
+Line       193 Item    1  (i < 4)
+Condition totals: 1 of 1 input term covered = 100.00%
+
+----------------Focused Condition View-------------------
+Line       233 Item    1  (dut.rr_counter !== 0)
+Condition totals: 0 of 1 input term covered = 0.00%
+
+              Input Term   Covered  Reason for no coverage   Hint
+             -----------  --------  -----------------------  --------------
+  (dut.rr_counter !== 0)         N  '_1' not hit             Hit '_1'
+
+     Rows:       Hits  FEC Target                Non-masking condition(s)      
+ ---------  ---------  --------------------      -------------------------     
+  Row   1:          1  (dut.rr_counter !== 0)_0  -                             
+  Row   2:    ***0***  (dut.rr_counter !== 0)_1  -                             
+
+----------------Focused Condition View-------------------
+Line       283 Item    1  (channel_valid && (selected_channel !== 5))
+Condition totals: 0 of 2 input terms covered = 0.00%
+
+                Input Term   Covered  Reason for no coverage   Hint
+               -----------  --------  -----------------------  --------------
+             channel_valid         N  No hits                  Hit '_0' and '_1'
+  (selected_channel !== 5)         N  '_1' not hit             Hit '_1'
+
+     Rows:       Hits  FEC Target                  Non-masking condition(s)      
+ ---------  ---------  --------------------        -------------------------     
+  Row   1:    ***0***  channel_valid_0             -                             
+  Row   2:    ***0***  channel_valid_1             (selected_channel !== 5)      
+  Row   3:          1  (selected_channel !== 5)_0  channel_valid                 
+  Row   4:    ***0***  (selected_channel !== 5)_1  channel_valid                 
+
+
+
+Covergroup Coverage:
+    Covergroups                      1        na        na   100.00%
+        Coverpoints/Crosses          7        na        na        na
+            Covergroup Bins         30        30         0   100.00%
+----------------------------------------------------------------------------------------------------------
+Covergroup                                             Metric       Goal       Bins    Status               
+                                                                                                         
+----------------------------------------------------------------------------------------------------------
+ TYPE /tb_configurable_arbiter/cg_arbiter             100.00%        100          -    Covered              
+    covered/total bins:                                    30         30          -                      
+    missing/total bins:                                     0         30          -                      
+    % Hit:                                            100.00%        100          -                      
+    Coverpoint cp_mode                                100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_all_request                         100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_urgent_active                       100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_mode_transition                     100.00%        100          -    Covered              
+        covered/total bins:                                16         16          -                      
+        missing/total bins:                                 0         16          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_busy                                100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_valid                               100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+    Cross #cross__0#                                  100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+ Covergroup instance \/tb_configurable_arbiter/cg     100.00%        100          -    Covered              
+    covered/total bins:                                    30         30          -                      
+    missing/total bins:                                     0         30          -                      
+    % Hit:                                            100.00%        100          -                      
+    Coverpoint cp_mode                                100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin rr                                            128          1          -    Covered              
+        bin priority_                                     114          1          -    Covered              
+        bin weighted                                      115          1          -    Covered              
+        bin dynamic_                                      128          1          -    Covered              
+    Coverpoint cp_all_request                         100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin all_eight                                     178          1          -    Covered              
+        default bin others                                307                     -    Occurred             
+    Coverpoint cp_urgent_active                       100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin active                                        270          1          -    Covered              
+    Coverpoint cp_mode_transition                     100.00%        100          -    Covered              
+        covered/total bins:                                16         16          -                      
+        missing/total bins:                                 0         16          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin trans[3=>3]                                    62          1          -    Covered              
+        bin trans[3=>2]                                    25          1          -    Covered              
+        bin trans[3=>1]                                    19          1          -    Covered              
+        bin trans[3=>0]                                    21          1          -    Covered              
+        bin trans[2=>3]                                    17          1          -    Covered              
+        bin trans[2=>2]                                    52          1          -    Covered              
+        bin trans[2=>1]                                    17          1          -    Covered              
+        bin trans[2=>0]                                    29          1          -    Covered              
+        bin trans[1=>3]                                    29          1          -    Covered              
+        bin trans[1=>2]                                    18          1          -    Covered              
+        bin trans[1=>1]                                    54          1          -    Covered              
+        bin trans[1=>0]                                    13          1          -    Covered              
+        bin trans[0=>3]                                    20          1          -    Covered              
+        bin trans[0=>2]                                    20          1          -    Covered              
+        bin trans[0=>1]                                    24          1          -    Covered              
+        bin trans[0=>0]                                    64          1          -    Covered              
+    Coverpoint cp_busy                                100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin auto[0]                                       452          1          -    Covered              
+        bin auto[1]                                        33          1          -    Covered              
+    Coverpoint cp_valid                               100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin auto[0]                                        76          1          -    Covered              
+        bin auto[1]                                       409          1          -    Covered              
+    Cross #cross__0#                                  100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+        Auto, Default and User Defined Bins:
+            bin <dynamic_,all_eight>                       48          1          -    Covered              
+            bin <weighted,all_eight>                       44          1          -    Covered              
+            bin <priority_,all_eight>                      40          1          -    Covered              
+            bin <rr,all_eight>                             46          1          -    Covered              
+Expression Coverage:
+    Enabled Coverage              Bins   Covered    Misses  Coverage
+    ----------------              ----      ----    ------  --------
+    Expressions                      1         1         0   100.00%
+
+================================Expression Details================================
+
+Expression Coverage for instance /tb_configurable_arbiter --
+
+  File tb_configurable_arbiter.sv
+----------------Focused Expression View-----------------
+Line       318 Item    1  ($urandom_range(0,9) == 0)
+Expression totals: 1 of 1 input term covered = 100.00%
+
+
+Statement Coverage:
+    Enabled Coverage              Bins      Hits    Misses  Coverage
+    ----------------              ----      ----    ------  --------
+    Statements                     110       107         3    97.27%
+
+================================Statement Details================================
+
+Statement Coverage for instance /tb_configurable_arbiter --
+
+    Line         Item                      Count     Source 
+    ----         ----                      -----     ------ 
+  File tb_configurable_arbiter.sv
+    31              1                        970     
+    31              2                        969     
+    132             1                        307     
+    133             1                        307     
+    134             1                        307     
+    134             2                       2456     
+    136             1                        520     
+    177             1                          1     
+    183             1                         12     
+    183             2                         96     
+    184             1                         96     
+    185             1                         96     
+    186             1                         96     
+    191             1                          1     
+    191             2                          8     
+    192             1                          8     
+    193             1                          8     
+    199             1                        165     
+    200             1                        165     
+    201             1                        165     
+    203             1                         37     
+    210             1                          1     
+    211             1                          1     
+    212             1                          1     
+    213             1                          1     
+    214             1                          1     
+    215             1                          1     
+    216             1                          3     
+    216             2                          3     
+    217             1                          1     
+    218             1                          1     
+    225             1                          1     
+    226             1                          1     
+    227             1                          1     
+    228             1                          1     
+    229             1                          1     
+    230             1                          3     
+    230             2                          3     
+    231             1                          1     
+    232             1                          1     
+    234             1                    ***0***     
+    236             1                          1     
+    237             1                          1     
+    238             1                          1     
+    239             1                          1     
+    245             1                          1     
+    246             1                          1     
+    246             2                          4     
+    247             1                          4     
+    248             1                          4     
+    249             1                          4     
+    250             1                          4     
+    251             1                          4     
+    254             1                          1     
+    255             1                          1     
+    260             1                          1     
+    261             1                          1     
+    262             1                          1     
+    262             2                          4     
+    263             1                          4     
+    263             2                         16     
+    264             1                         16     
+    265             1                         16     
+    266             1                         16     
+    267             1                         16     
+    270             1                          1     
+    275             1                          1     
+    276             1                          1     
+    277             1                          1     
+    278             1                          1     
+    279             1                          1     
+    281             1                          1     
+    282             1                          1     
+    284             1                    ***0***     
+    287             1                          1     
+    288             1                          1     
+    289             1                          1     
+    290             1                          1     
+    291             1                          1     
+    292             1                          1     
+    297             1                          1     
+    298             1                          1     
+    299             1                          1     
+    300             1                          1     
+    301             1                          5     
+    301             2                          5     
+    303             1                    ***0***     
+    305             1                          1     
+    306             1                          1     
+    307             1                          1     
+    312             1                          1     
+    313             1                          1     
+    313             2                        300     
+    314             1                        300     
+    315             1                        300     
+    316             1                        300     
+    317             1                        300     
+    318             1                        300     
+    319             1                        300     
+    320             1                        300     
+    322             1                          1     
+    323             1                          1     
+    324             1                          1     
+    325             1                          1     
+    327             1                          1     
+    328             1                          1     
+    329             1                          1     
+    330             1                          1     
+    331             1                          1     
+    333             1                          1     
+Toggle Coverage:
+    Enabled Coverage              Bins      Hits    Misses  Coverage
+    ----------------              ----      ----    ------  --------
+    Toggles                         76        74         2    97.36%
+
+================================Toggle Details================================
+
+Toggle Coverage for instance /tb_configurable_arbiter --
+
+                                              Node      1H->0L      0L->1H  "Coverage"
+                                              ---------------------------------------
+                               max_priority_now[3]           0           0        0.00 
+
+Total Node Count     =         38 
+Toggled Node Count   =         37 
+Untoggled Node Count =          1 
+
+Toggle Coverage      =      97.36% (74 of 76 bins)
+
+COVERGROUP COVERAGE:
+----------------------------------------------------------------------------------------------------------
+Covergroup                                             Metric       Goal       Bins    Status               
+                                                                                                         
+----------------------------------------------------------------------------------------------------------
+ TYPE /tb_configurable_arbiter/cg_arbiter             100.00%        100          -    Covered              
+    covered/total bins:                                    30         30          -                      
+    missing/total bins:                                     0         30          -                      
+    % Hit:                                            100.00%        100          -                      
+    Coverpoint cp_mode                                100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_all_request                         100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_urgent_active                       100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_mode_transition                     100.00%        100          -    Covered              
+        covered/total bins:                                16         16          -                      
+        missing/total bins:                                 0         16          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_busy                                100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+    Coverpoint cp_valid                               100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+    Cross #cross__0#                                  100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+ Covergroup instance \/tb_configurable_arbiter/cg     100.00%        100          -    Covered              
+    covered/total bins:                                    30         30          -                      
+    missing/total bins:                                     0         30          -                      
+    % Hit:                                            100.00%        100          -                      
+    Coverpoint cp_mode                                100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin rr                                            128          1          -    Covered              
+        bin priority_                                     114          1          -    Covered              
+        bin weighted                                      115          1          -    Covered              
+        bin dynamic_                                      128          1          -    Covered              
+    Coverpoint cp_all_request                         100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin all_eight                                     178          1          -    Covered              
+        default bin others                                307                     -    Occurred             
+    Coverpoint cp_urgent_active                       100.00%        100          -    Covered              
+        covered/total bins:                                 1          1          -                      
+        missing/total bins:                                 0          1          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin active                                        270          1          -    Covered              
+    Coverpoint cp_mode_transition                     100.00%        100          -    Covered              
+        covered/total bins:                                16         16          -                      
+        missing/total bins:                                 0         16          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin trans[3=>3]                                    62          1          -    Covered              
+        bin trans[3=>2]                                    25          1          -    Covered              
+        bin trans[3=>1]                                    19          1          -    Covered              
+        bin trans[3=>0]                                    21          1          -    Covered              
+        bin trans[2=>3]                                    17          1          -    Covered              
+        bin trans[2=>2]                                    52          1          -    Covered              
+        bin trans[2=>1]                                    17          1          -    Covered              
+        bin trans[2=>0]                                    29          1          -    Covered              
+        bin trans[1=>3]                                    29          1          -    Covered              
+        bin trans[1=>2]                                    18          1          -    Covered              
+        bin trans[1=>1]                                    54          1          -    Covered              
+        bin trans[1=>0]                                    13          1          -    Covered              
+        bin trans[0=>3]                                    20          1          -    Covered              
+        bin trans[0=>2]                                    20          1          -    Covered              
+        bin trans[0=>1]                                    24          1          -    Covered              
+        bin trans[0=>0]                                    64          1          -    Covered              
+    Coverpoint cp_busy                                100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin auto[0]                                       452          1          -    Covered              
+        bin auto[1]                                        33          1          -    Covered              
+    Coverpoint cp_valid                               100.00%        100          -    Covered              
+        covered/total bins:                                 2          2          -                      
+        missing/total bins:                                 0          2          -                      
+        % Hit:                                        100.00%        100          -                      
+        bin auto[0]                                        76          1          -    Covered              
+        bin auto[1]                                       409          1          -    Covered              
+    Cross #cross__0#                                  100.00%        100          -    Covered              
+        covered/total bins:                                 4          4          -                      
+        missing/total bins:                                 0          4          -                      
+        % Hit:                                        100.00%        100          -                      
+        Auto, Default and User Defined Bins:
+            bin <dynamic_,all_eight>                       48          1          -    Covered              
+            bin <weighted,all_eight>                       44          1          -    Covered              
+            bin <priority_,all_eight>                      40          1          -    Covered              
+            bin <rr,all_eight>                             46          1          -    Covered              
+
+TOTAL COVERGROUP COVERAGE: 100.00%  COVERGROUP TYPES: 1
+
+ASSERTION RESULTS:
+--------------------------------------------------------------------
+Name                 File(Line)                   Failure      Pass 
+                                                  Count        Count
+--------------------------------------------------------------------
+/tb_configurable_arbiter/assert__p_priority_mode_is_max
+                     tb_configurable_arbiter.sv(144)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_dynamic_urgent_priority
+                     tb_configurable_arbiter.sv(118)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_rr_counter_increments
+                     tb_configurable_arbiter.sv(107)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_reset_weight_acc
+                     tb_configurable_arbiter.sv(98)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_reset_rr_counter
+                     tb_configurable_arbiter.sv(90)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_no_valid_if_none_ready
+                     tb_configurable_arbiter.sv(83)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_no_valid_while_busy
+                     tb_configurable_arbiter.sv(75)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_valid_implies_enabled_ready
+                     tb_configurable_arbiter.sv(66)
+                                                        0          1
+/tb_configurable_arbiter/assert__p_selected_channel_range
+                     tb_configurable_arbiter.sv(58)
+                                                        0          1
+
+Total Coverage By Instance (filtered view): 90.30%
+

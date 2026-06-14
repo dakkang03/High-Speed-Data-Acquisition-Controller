@@ -450,14 +450,14 @@ initial begin
     $display("Errors: %0d", error_count);
     $display("\n*** COVERAGE TEST COMPLETE ***\n");
     
-    $finish;
+    $stop;
 end
 
 initial begin
     #20000000; // 20ms timeout
     $display("\n!!! TIMEOUT !!!");
     $display("Total samples: %0d", total_samples);
-    $finish;
+    $stop;
 end
 
 endmodule

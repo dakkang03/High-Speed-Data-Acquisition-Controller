@@ -1,0 +1,613 @@
+Cadence Genus(TM) Synthesis Solution.
+Copyright 2022 Cadence Design Systems, Inc. All rights reserved worldwide.
+Cadence and the Cadence logo are registered trademarks and Genus is a trademark
+of Cadence Design Systems, Inc. in the United States and other countries.
+
+[23:14:31.041330] Configured Lic search path (21.01-s002): /uusoc/facility/cad_tools/Cadence/common_license:/uusoc/facility/cad_tools/Mentor/common_license
+
+Version: 21.15-s080_1, built Fri Sep 23 11:57:55 PDT 2022
+Options: -files synthesis.tcl 
+Date:    Thu Oct 30 23:14:31 2025
+Host:    lab1-30.eng.utah.edu (x86_64 w/Linux 4.18.0-553.78.1.el8_10.x86_64) (8cores*16cpus*1physical cpu*Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz 16384KB) (65789912KB)
+PID:     328824
+OS:      Red Hat Enterprise Linux release 8.10 (Ootpa)
+
+
+[23:14:31.372856] Periodic Lic check successful
+[23:14:31.372866] Feature usage summary:
+[23:14:31.372866] Genus_Synthesis
+Checking out license: Genus_Synthesis
+
+
+***********************************************************************************************************
+***********************************************************************************************************
+
+
+
+Loading tool scripts...
+Finished loading tool scripts (7 seconds elapsed).
+
+#@ Processing -files option
+@genus 1> source synthesis.tcl
+#@ Begin verbose source ./synthesis.tcl
+@file(synthesis.tcl) 3: set_db hdl_language sv
+  Setting attribute of root '/': 'hdl_language' = sv
+@file(synthesis.tcl) 6: if {[file exists /proc/cpuinfo]} {
+  sh grep "model name" /proc/cpuinfo
+  sh grep "cpu MHz"    /proc/cpuinfo
+}
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+cpu MHz		: 4624.115
+cpu MHz		: 4513.716
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 4489.486
+@file(synthesis.tcl) 11: puts "Hostname : [info hostname]"
+Hostname : lab1-30.eng.utah.edu
+@file(synthesis.tcl) 18: set DESIGN high_speed_daq_controller
+@file(synthesis.tcl) 19: set GEN_EFF medium
+@file(synthesis.tcl) 20: set MAP_OPT_EFF high
+@file(synthesis.tcl) 21: set DATE [clock format [clock seconds] -format "%b%d-%T"] 
+@file(synthesis.tcl) 22: set _OUTPUTS_PATH outputs_${DATE}
+@file(synthesis.tcl) 23: set _REPORTS_PATH reports_${DATE}
+@file(synthesis.tcl) 24: set _LOG_PATH logs_${DATE}
+@file(synthesis.tcl) 26: set_db / .init_lib_search_path {. ./lib} 
+  Setting attribute of root '/': 'init_lib_search_path' = . ./lib
+@file(synthesis.tcl) 27: set_db / .script_search_path {. <path>} 
+  Setting attribute of root '/': 'script_search_path' = . <path>
+@file(synthesis.tcl) 28: set_db / .init_hdl_search_path {. ./rtl} 
+  Setting attribute of root '/': 'init_hdl_search_path' = . ./rtl
+@file(synthesis.tcl) 37: set_db / .information_level 7 
+  Setting attribute of root '/': 'information_level' = 7
+@file(synthesis.tcl) 44: read_libs { /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_tt_nldm.lib \
+            /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ss_nldm.lib \
+            /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ff_nldm.lib }
+
+Threads Configured:8
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_tt_nldm.lib'
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ss_nldm.lib'
+Warning : Libraries have inconsistent nominal operating conditions. In the Liberty library, there are attributes called nom_voltage, nom_process and nom_temperature. Genus reports the message, if the respective values of the 2 given .libs differ. [LBR-38]
+        : The libraries are 'sclib_tsmc180_tt' and 'sclib_tsmc180_ss'.
+        : This is a common source of delay calculation confusion and should be avoided.
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ff_nldm.lib'
+Warning : Libraries have inconsistent nominal operating conditions. In the Liberty library, there are attributes called nom_voltage, nom_process and nom_temperature. Genus reports the message, if the respective values of the 2 given .libs differ. [LBR-38]
+        : The libraries are 'sclib_tsmc180_tt' and 'sclib_tsmc180_ff'.
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.800000, 25.000000) in library 'sclib_tsmc180_tt_nldm.lib'.
+        : The nominal operating condition is represented, either by the nominal PVT values specified in the library source (via nom_process,nom_voltage and nom_temperature respectively), or by the default PVT values (1.0,1.0,1.0).
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.620000, 125.000000) in library 'sclib_tsmc180_ss_nldm.lib'.
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.980000, -40.000000) in library 'sclib_tsmc180_ff_nldm.lib'.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+        : Add the missing output pin(s), then reload the library. Else the library cell will be marked as timing model i.e. unusable. Timing_model means that the cell does not have any defined function. If there is no output pin, Genus will mark library cell as unusable i.e. the attribute 'usable' will be marked to 'false' on the libcell. Therefore, the cell is not used for mapping and it will not be picked up from the library for synthesis. If you query the attribute 'unusable_reason' on the libcell; result will be: 'Library cell has no output pins.'Note: The message LBR-9 is only for the logical pins and not for the power_ground pins. Genus will depend upon the output function defined in the pin group (output pin) of the cell, to use it for mapping. The pg_pin will not have any function defined.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/AND2X1 and sclib_tsmc180_ss/AND2X1).  Deleting (sclib_tsmc180_ss/AND2X1).
+        : Library cell names must be unique.  Any duplicates will be deleted.  Only the first (as determined by the order of libraries) will be retained.
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/ANTENNA and sclib_tsmc180_ss/ANTENNA).  Deleting (sclib_tsmc180_ss/ANTENNA).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/BUFX1 and sclib_tsmc180_ss/BUFX1).  Deleting (sclib_tsmc180_ss/BUFX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQBX1 and sclib_tsmc180_ss/DFFQBX1).  Deleting (sclib_tsmc180_ss/DFFQBX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQQBX1 and sclib_tsmc180_ss/DFFQQBX1).  Deleting (sclib_tsmc180_ss/DFFQQBX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQSRX1 and sclib_tsmc180_ss/DFFQSRX1).  Deleting (sclib_tsmc180_ss/DFFQSRX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQX1 and sclib_tsmc180_ss/DFFQX1).  Deleting (sclib_tsmc180_ss/DFFQX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX1 and sclib_tsmc180_ss/INVX1).  Deleting (sclib_tsmc180_ss/INVX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX16 and sclib_tsmc180_ss/INVX16).  Deleting (sclib_tsmc180_ss/INVX16).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX2 and sclib_tsmc180_ss/INVX2).  Deleting (sclib_tsmc180_ss/INVX2).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX32 and sclib_tsmc180_ss/INVX32).  Deleting (sclib_tsmc180_ss/INVX32).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX4 and sclib_tsmc180_ss/INVX4).  Deleting (sclib_tsmc180_ss/INVX4).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX8 and sclib_tsmc180_ss/INVX8).  Deleting (sclib_tsmc180_ss/INVX8).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/MUX2X1 and sclib_tsmc180_ss/MUX2X1).  Deleting (sclib_tsmc180_ss/MUX2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NAND2X1 and sclib_tsmc180_ss/NAND2X1).  Deleting (sclib_tsmc180_ss/NAND2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NAND3X1 and sclib_tsmc180_ss/NAND3X1).  Deleting (sclib_tsmc180_ss/NAND3X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NOR2X1 and sclib_tsmc180_ss/NOR2X1).  Deleting (sclib_tsmc180_ss/NOR2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/OR2X1 and sclib_tsmc180_ss/OR2X1).  Deleting (sclib_tsmc180_ss/OR2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/TIE0 and sclib_tsmc180_ss/TIE0).  Deleting (sclib_tsmc180_ss/TIE0).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/TIE1 and sclib_tsmc180_ss/TIE1).  Deleting (sclib_tsmc180_ss/TIE1).
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'LBR-22'.
+@file(synthesis.tcl) 48: read_physical -lefs /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/tech.lef
+
+  According to lef_library, there are total 6 routing layers [ V(3) / H(3) ]
+
+Warning : None of the loaded LEF files have MACRO statements. [PHYS-20]
+        : Make sure the LEF file containing MACRO statement was not missed.
+        : The LEF file containing the cell specific information was not loaded. The LEF MACRO construct is used to set the physical data on cells in the timing library. It is likely that only the technology LEF file was loaded. Load all the associated LEF files.
+@file(synthesis.tcl) 50: set_db / .cap_table_file /research/ece/lnis-teaching/Designkits/tsmc180nm/pdk/captable/t018lo_1p6m_typical.captable 
+
+  According to cap_table_file, there are total 6 routing layers [ V(3) / H(3) ]
+
+  Setting attribute of root '/': 'cap_table_file' = /research/ece/lnis-teaching/Designkits/tsmc180nm/pdk/captable/t018lo_1p6m_typical.captable
+@file(synthesis.tcl) 57: set_db / .lp_insert_clock_gating false 
+  Setting attribute of root '/': 'lp_insert_clock_gating' = false
+@file(synthesis.tcl) 64: read_hdl -sv { \
+    /home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv \
+    /home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv \
+    /home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv \
+    /home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv \
+/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv \
+}
+            Reading Verilog file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv'
+            Reading Verilog file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv'
+            Reading Verilog file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv'
+            Reading Verilog file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv'
+            Reading Verilog file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv'
+@file(synthesis.tcl) 71: elaborate $DESIGN
+Info    : Both 'pos_unate' and 'neg_unate' timing_sense arcs have been processed. [LBR-162]
+        : Non_unate 'timing_sense' inferred between pin 'S' and 'Z' in libcell 'MUX2X1'.
+        : Setting the 'timing_sense' to non_unate.
+Info    : Both 'pos_unate' and 'neg_unate' timing_sense arcs have been processed. [LBR-162]
+        : Non_unate 'timing_sense' inferred between pin 'B' and 'Z' in libcell 'XOR2X1'.
+Info    : Both 'pos_unate' and 'neg_unate' timing_sense arcs have been processed. [LBR-162]
+        : Non_unate 'timing_sense' inferred between pin 'A' and 'Z' in libcell 'XOR2X1'.
+  Libraries have 14 usable logic and 4 usable sequential lib-cells.
+Info    : Elaborating Design. [ELAB-1]
+        : Elaborating top-level block 'high_speed_daq_controller' from file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv'.
+Warning : Using default parameter value for module elaboration. [CDFG-818]
+        : Elaborating block 'high_speed_daq_controller' with default parameters value.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_IDLE' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 47.
+        : Review and make sure the mismatch is unintentional. Genus can possibly issue bitwidth mismatch warning for explicit assignments present in RTL as-well-as for implicit assignments inferred by the tool. For example, in case of enum declaration without value, the tool will implicitly assign value to the enum variables. It also issues the warning for any bitwidth mismatch that appears in this implicit assignment.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_CMD' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 48.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_ADDR_HIGH' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 49.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_ADDR_LOW' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 50.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE0' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 51.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE1' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 52.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE2' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 53.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE3' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 55.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'IDLE' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 101.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SELECT_CHANNEL' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 102.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'START_CONVERSION' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 103.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'WAIT_CONVERSION' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 104.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'CAPTURE_DATA' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 105.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'NEXT_CHANNEL' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 107.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'config_registers' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_IDLE' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 47.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_CMD' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 48.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_ADDR_HIGH' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 49.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_ADDR_LOW' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 50.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE0' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 51.
+Info    : Bitwidth mismatch in assignment. [CDFG-372]
+        : Width of left hand side 'SPI_DATA_BYTE1' [3] doesn't match the width of right hand side [32] in assignment in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 52.
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'CDFG-372'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'channel_priority' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 80.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'channel_weight' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 81.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'trigger_config' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 92.
+Warning : Unreachable statements for case item. [CDFG-472]
+        : Case item 'default' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 202.
+Info    : Elaborating Subdesign. [ELAB-2]
+        : Elaborating block 'configurable_arbiter_NUM_CHANNELS8' from file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'channel_priority' in module 'configurable_arbiter_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 10.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'channel_weight' in module 'configurable_arbiter_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 11.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'weight_accumulator' in module 'configurable_arbiter_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 27.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'find_next_rr_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 49.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5303' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5306' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5372' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5375' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5492' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5495' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5612' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5615' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5732' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5735' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5852' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5855' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5972' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N5975' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N6092' at line 48 col 13, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Optimized the MUX created for array read / write or variable shifter. [CDFG-893]
+        : Optimized mux for Array Read for variable 'N6095' at line 48 col 36, in Module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Reversed the data and condition priority for priority mux chain (possibly created from loop based RTL), using new loop reversal algorithm. [CDFG-780]
+        : Priority chain of muxes in module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_next_rr_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 52.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression eliminated. [CDFG-738]
+        : Eliminated '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Info    : Common subexpression kept. [CDFG-739]
+        : Kept '%bit-select%' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 48.
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'CDFG-738'.
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'CDFG-739'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'priorities' in module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_highest_priority_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 57.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 73.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'weights' in module 'configurable_arbiter_NUM_CHANNELS8_configurable_arbiter_find_max_weight_channel_configurable_arbiter_NUM_CHANNELS_8_CHANNEL_WIDTH_3' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 104.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 114.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 114.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 114.
+Info    : Sign mismatch in assignment. [CDFG-373]
+        : Assignment has unsigned left hand side 'max_channel' and signed right hand side in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 114.
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'CDFG-373'.
+Warning : Unreachable statements for case item. [CDFG-472]
+        : Case item 'default' in module 'configurable_arbiter_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/configurable_arbiter.sv' on line 122.
+Info    : Elaborating Subdesign. [ELAB-2]
+        : Elaborating block 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' from file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'mem' in module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv' on line 33.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'fifo_mode' is not used in module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv' on line 12.
+        : (In port definition within the module, the input port is not used in any assignment statements or conditional expressions for decision statements.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'watermark_l1' is not used in module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv' on line 13.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'watermark_l2' is not used in module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv' on line 14.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'watermark_l3' is not used in module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/single_fifo.sv' on line 15.
+Warning : Module port is wider than connected signal. [CDFG-465]
+        : Signal width (10) does not match width of output port 'count' (11) of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+        : This may cause simulation mismatches between the original and synthesized designs.
+Info    : Unused instance port. [ELABUTL-132]
+        : Unused Port 'wr_level' of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' inside module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+        : Please check the reported scenario of unconnected instance port to ensure that it matches the design intent.
+Info    : Unused instance port. [ELABUTL-132]
+        : Unused Port 'rd_level' of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' inside module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+Info    : Unused instance port. [ELABUTL-132]
+        : Unused Port 'fifo_status' of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' inside module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+Info    : Unused instance port. [ELABUTL-132]
+        : Unused Port 'level_overflow' of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' inside module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+Info    : Unused instance port. [ELABUTL-132]
+        : Unused Port 'backpressure_active' of instance 'fifo_inst' of module 'single_fifo_DATA_WIDTH16_FIFO_DEPTH672' inside module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 475.
+Info    : Elaborating Subdesign. [ELAB-2]
+        : Elaborating block 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' from file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'config_reg' in module 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 16.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'prev_sample' in module 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 36.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'trigger_history' in module 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 56.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 73.
+        : A relational expression can evaluate to a constant when a variable is compared to a value which is outside the bounds of the variable.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 87.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 155.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'config_reg[6]' is not used in module 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 16.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'config_reg[7]' is not used in module 'derivative_threshold_engine_NUM_CHANNELS8_ADC_WIDTH12' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/derivative_threshold_engine.sv' on line 16.
+Info    : Elaborating Subdesign. [ELAB-2]
+        : Elaborating block 'performance_monitor_NUM_CHANNELS8' from file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv'.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'sample_start_time' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 63.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'latency_sum' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 64.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'latency_count' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 65.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'latency_max' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 66.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'adc_conversion_time' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Info    : Processing multi-dimensional arrays. [CDFG-250]
+        : Variable 'adc_start_time' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 80.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 133.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 250.
+Info    : Constant relational expression. [CDFG-479]
+        : The '<' operation evaluates to 'true' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 254.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[0]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+        : Genus removes the flip-flop or latch inferred for an unused signal or variable. To preserve the flip-flop or latch, set the hdl_preserve_unused_registers attribute to true or use a pragma in the RTL.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[1]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[2]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[3]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[4]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[5]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[6]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'adc_conversion_time[7]' in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 79.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'fifo_empty' is not used in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 21.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'trigger_channel' is not used in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 25.
+Info    : Unused module input port. [CDFG-500]
+        : Input port 'trigger_confidence' is not used in module 'performance_monitor_NUM_CHANNELS8' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/performance_monitor.sv' on line 26.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[3]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[24]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[25]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[26]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[27]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[28]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[29]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[30]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Warning : Removing unused register. [CDFG-508]
+        : Removing unused flip-flop register 'config_registers[31]' in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 44.
+Info    : Identified sum-of-products logic to be optimized during syn_generic. [CDFG-769]
+        : Sum-of-products logic in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 202.
+Info    : Identified sum-of-products logic to be optimized during syn_generic. [CDFG-769]
+        : Sum-of-products logic in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 396.
+Info    : Identified sum-of-products logic to be optimized during syn_generic. [CDFG-769]
+        : Sum-of-products logic in module 'high_speed_daq_controller' in file '/home/u1425837/High-Speed-Data-Acquisition-Controller/modelsim/RTL/high_speed_daq_controller.sv' on line 396.
+Info    : Done Elaborating Design. [ELAB-3]
+        : Done elaborating 'high_speed_daq_controller'.
+Checking for analog nets...
+Check completed for analog nets.
+Checking for source RTL...
+Check completed for source RTL.
+Running Unified Mux Engine Tricks...
+Completed Unified Mux Engine Tricks
+
+Stage: post_elab
+--------------------------------------------------------
+| Trick             | Accepts | Rejects | Runtime (ms) | 
+--------------------------------------------------------
+| ume_constant_bmux |       0 |       0 |         2.00 | 
+--------------------------------------------------------
+Starting clip mux common data inputs [v1.0] (stage: post_elab, startdef: high_speed_daq_controller, recur: true)
+Completed clip mux common data inputs (accepts: 0, rejects: 0, runtime: 0.003s)
+Starting clip the non-user hierarchies [v2.0] (stage: post_elab, startdef: high_speed_daq_controller, recur: true)
+Completed clip the non-user hierarchies (accepts: 0, rejects: 0, runtime: 0.001s)
+
+Stage: post_elab
+---------------------------------------------------------
+| Transform          | Accepts | Rejects | Runtime (ms) | 
+---------------------------------------------------------
+| hlo_clip_mux_input |       0 |       0 |         3.00 | 
+| hlo_clip           |       0 |       0 |         1.00 | 
+---------------------------------------------------------
+        Computing net loads.
+UM:   flow.cputime  flow.realtime  timing.setup.tns  timing.setup.wns  snapshot
+UM:*                                                                   elaborate
+@file(synthesis.tcl) 72: puts "Runtime & Memory after 'read_hdl'"
+Runtime & Memory after 'read_hdl'
+@file(synthesis.tcl) 73: time_info Elaboration
+stamp 'Elaboration' being created for table 'default'
+
+  Total Time (Wall) |  Stage Time (Wall)  |   % (Wall)   |    Date - Time     |  Memory   | Stage
+--------------------+---------------------+--------------+--------------------+-----------+----------------------
+ 00:00:03(00:00:00) |  00:00:00(00:00:00) |   0.0(  0.0) |   23:14:35 (Oct30) |  217.7 MB | init
+--------------------+---------------------+--------------+--------------------+-----------+----------------------
+ 00:00:21(00:00:19) |  00:00:18(00:00:19) | 100.0(100.0) |   23:14:54 (Oct30) |  585.1 MB | Elaboration
+--------------------+---------------------+--------------+--------------------+-----------+----------------------
+Number of threads: 8 * 1   (id: default, time_info v1.57)
+Info: (*N*) indicates data that was populated from previously saved time_info database
+Info: CPU time includes time of parent + longest thread
+@file(synthesis.tcl) 77: check_design -unresolved
+
+
+ 	 Check Design Report (c)
+	 ------------------- 
+
+  Unresolved References & Empty Modules
+  ------------------------------------- 
+No unresolved references in design 'high_speed_daq_controller'
+
+No empty modules in design 'high_speed_daq_controller'
+
+  Done Checking the design.
+@file(synthesis.tcl) 83: read_sdc /home/u1425837/High-Speed-Data-Acquisition-Controller/genus/SDC/high-speed-daq-controller
+Error: Unable to find /home/u1425837/High-Speed-Data-Acquisition-Controller/genus/SDC/high-speed-daq-controller
+#@ End verbose source ./synthesis.tcl
+Failed on read_sdc
+Encountered problems processing file: synthesis.tcl
+WARNING: This version of the tool is 1133 days old.
+@genus:root: 2> exit
+
+Lic Summary:
+[23:17:33.231968] Cdslmd servers: chickasaw
+[23:17:33.231978] Feature usage summary:
+[23:17:33.231978] Genus_Synthesis
+
+Normal exit.

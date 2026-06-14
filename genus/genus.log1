@@ -1,0 +1,55 @@
+Cadence Genus(TM) Synthesis Solution.
+Copyright 2022 Cadence Design Systems, Inc. All rights reserved worldwide.
+Cadence and the Cadence logo are registered trademarks and Genus is a trademark
+of Cadence Design Systems, Inc. in the United States and other countries.
+
+[23:04:11.041306] Configured Lic search path (21.01-s002): /uusoc/facility/cad_tools/Cadence/common_license:/uusoc/facility/cad_tools/Mentor/common_license
+
+Version: 21.15-s080_1, built Fri Sep 23 11:57:55 PDT 2022
+Options: -files synthesis.tcl 
+Date:    Thu Oct 30 23:04:11 2025
+Host:    lab1-30.eng.utah.edu (x86_64 w/Linux 4.18.0-553.78.1.el8_10.x86_64) (8cores*16cpus*1physical cpu*Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz 16384KB) (65789912KB)
+PID:     324531
+OS:      Red Hat Enterprise Linux release 8.10 (Ootpa)
+
+
+[23:04:11.393650] Periodic Lic check successful
+[23:04:11.393651] Feature usage summary:
+[23:04:11.393656] Genus_Synthesis
+Checking out license: Genus_Synthesis
+
+
+***********************************************************************************************************
+***********************************************************************************************************
+
+
+
+Loading tool scripts...
+Finished loading tool scripts (7 seconds elapsed).
+
+#@ Processing -files option
+@genus 1> source synthesis.tcl
+#@ Begin verbose source ./synthesis.tcl
+@file(synthesis.tcl) 3: set_db hdl_language sv
+  Setting attribute of root '/': 'hdl_language' = sv
+@file(synthesis.tcl) 4: set_db hdl_verilog_read_version 2005
+Error   : <Start> word is not recognized. [TUI-182] [set_db]
+        : 'hdl_verilog_read_version' is not a recognized object/attribute. Type 'help root:' to get a list of all supported objects and attributes.
+        : Check if the given <Start> word is a valid object_type, object or attribute.
+#@ End verbose source ./synthesis.tcl
+1
+Encountered problems processing file: synthesis.tcl
+WARNING: This version of the tool is 1133 days old.
+
+Another Ctrl-C within 1 second will terminate the tool.
+CURRENT RESOURCES: RT {elapsed: 45s, ST: 6s, FG: 6s, CPU: 4.4%}, MEM {curr: 1.0G, peak: 1.0G, phys curr: 0.3G, phys peak: 0.3G}, SYS {load: 0.3, cpu: 16, total: 62.7G, free: 29.7G}
+@genus:root: 2> 
+@genus:root: 2> 
+@genus:root: 2> exit
+
+Lic Summary:
+[23:05:30.129936] Cdslmd servers: chickasaw
+[23:05:30.129944] Feature usage summary:
+[23:05:30.129944] Genus_Synthesis
+
+Normal exit.

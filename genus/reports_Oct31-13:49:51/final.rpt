@@ -1,0 +1,51 @@
+
+
+Working Directory = /home/u1425837/High-Speed-Data-Acquisition-Controller/genus
+QoS Summary for high_speed_daq_controller
+==========================================================================================
+Metric                          generic         map             syn_opt         final          
+==========================================================================================
+Slack (ps):                    -2,230             442               5               5
+  R2R (ps):                    -2,230             442               5               5
+  I2R (ps):                  no_value        no_value        no_value        no_value
+  R2O (ps):                  no_value        no_value        no_value        no_value
+  I2O (ps):                  no_value        no_value        no_value        no_value
+  CG  (ps):                    12,551          12,612          12,612          12,612
+TNS (ps):                     -61,796               0               0               0
+  R2R (ps):                   -61,796               0               0               0
+  I2R (ps):                  no_value        no_value        no_value        no_value
+  R2O (ps):                  no_value        no_value        no_value        no_value
+  I2O (ps):                  no_value        no_value        no_value        no_value
+  CG  (ps):                         0               0               0               0
+Failing Paths:                    144               0               0               0
+Cell Area:                  2,697,818       2,437,025       2,411,861       2,411,861
+Total Cell Area:            2,697,818       2,437,025       2,411,861       2,411,861
+Leaf Instances:                92,706          77,933          76,654          76,654
+Total Instances:               92,706          77,933          76,654          76,654
+Utilization (%):                 0.00            0.00            0.00            0.00
+Tot. Net Length (um):        no_value        no_value        no_value        no_value
+Avg. Net Length (um):        no_value        no_value        no_value        no_value
+Route Overflow H (%):        no_value        no_value        no_value        no_value
+Route Overflow V (%):        no_value        no_value        no_value        no_value
+MBCI(%) (bits/gate) :            0.00            0.00            0.00            0.00
+Norm Cong Hotspot Area:
+  Max Cong:                  no_value        no_value        no_value        no_value
+  Tot Cong:                  no_value        no_value        no_value        no_value
+==========================================================================================
+CPU  Runtime (h:m:s):        00:16:33        00:10:02        00:00:59        00:00:04
+Real Runtime (h:m:s):        00:13:24        00:06:03        00:00:58        00:00:06
+CPU  Elapsed (h:m:s):        00:16:39        00:26:41        00:27:40        00:27:43
+Real Elapsed (h:m:s):        00:13:26        00:19:30        00:20:27        00:20:34
+Memory (MB):                  2415.05         2424.18         2440.48         2448.49
+==========================================================================================
+==========================================================================================
+Flow Settings:
+==========================================================================================
+Total Runtime (h:m:s): 00:20:38
+Total Memory (MB):     2448.49
+Executable Version:    21.15-s080_1
+==========================================================================================
+Total Cell Area =  Cell Area + Physical Cell Area
+Total Instances =  Leaf Instances + Physical Instances
+
+

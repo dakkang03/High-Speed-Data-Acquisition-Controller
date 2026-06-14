@@ -1,0 +1,194 @@
+Cadence Genus(TM) Synthesis Solution.
+Copyright 2022 Cadence Design Systems, Inc. All rights reserved worldwide.
+Cadence and the Cadence logo are registered trademarks and Genus is a trademark
+of Cadence Design Systems, Inc. in the United States and other countries.
+
+[23:06:26.041370] Configured Lic search path (21.01-s002): /uusoc/facility/cad_tools/Cadence/common_license:/uusoc/facility/cad_tools/Mentor/common_license
+
+Version: 21.15-s080_1, built Fri Sep 23 11:57:55 PDT 2022
+Options: -files synthesis.tcl 
+Date:    Thu Oct 30 23:06:26 2025
+Host:    lab1-30.eng.utah.edu (x86_64 w/Linux 4.18.0-553.78.1.el8_10.x86_64) (8cores*16cpus*1physical cpu*Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz 16384KB) (65789912KB)
+PID:     325528
+OS:      Red Hat Enterprise Linux release 8.10 (Ootpa)
+
+
+[23:06:26.172890] Periodic Lic check successful
+[23:06:26.172896] Feature usage summary:
+[23:06:26.172896] Genus_Synthesis
+Checking out license: Genus_Synthesis
+
+
+***********************************************************************************************************
+***********************************************************************************************************
+
+
+
+Loading tool scripts...
+Finished loading tool scripts (7 seconds elapsed).
+
+#@ Processing -files option
+@genus 1> source synthesis.tcl
+#@ Begin verbose source ./synthesis.tcl
+@file(synthesis.tcl) 3: set_db hdl_language sv
+  Setting attribute of root '/': 'hdl_language' = sv
+@file(synthesis.tcl) 6: if {[file exists /proc/cpuinfo]} {
+  sh grep "model name" /proc/cpuinfo
+  sh grep "cpu MHz"    /proc/cpuinfo
+}
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+model name	: Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 3966.411
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+cpu MHz		: 2900.000
+@file(synthesis.tcl) 11: puts "Hostname : [info hostname]"
+Hostname : lab1-30.eng.utah.edu
+@file(synthesis.tcl) 18: set DESIGN high_speed_daq_controller
+@file(synthesis.tcl) 19: set GEN_EFF medium
+@file(synthesis.tcl) 20: set MAP_OPT_EFF high
+@file(synthesis.tcl) 21: set DATE [clock format [clock seconds] -format "%b%d-%T"] 
+@file(synthesis.tcl) 22: set _OUTPUTS_PATH outputs_${DATE}
+@file(synthesis.tcl) 23: set _REPORTS_PATH reports_${DATE}
+@file(synthesis.tcl) 24: set _LOG_PATH logs_${DATE}
+@file(synthesis.tcl) 26: set_db / .init_lib_search_path {. ./lib} 
+  Setting attribute of root '/': 'init_lib_search_path' = . ./lib
+@file(synthesis.tcl) 27: set_db / .script_search_path {. <path>} 
+  Setting attribute of root '/': 'script_search_path' = . <path>
+@file(synthesis.tcl) 28: set_db / .init_hdl_search_path {. ./rtl} 
+  Setting attribute of root '/': 'init_hdl_search_path' = . ./rtl
+@file(synthesis.tcl) 37: set_db / .information_level 7 
+  Setting attribute of root '/': 'information_level' = 7
+@file(synthesis.tcl) 44: read_libs { /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_tt_nldm.lib \
+            /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ss_nldm.lib \
+            /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ff_nldm.lib }
+
+Threads Configured:8
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_tt_nldm.lib'
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ss_nldm.lib'
+Warning : Libraries have inconsistent nominal operating conditions. In the Liberty library, there are attributes called nom_voltage, nom_process and nom_temperature. Genus reports the message, if the respective values of the 2 given .libs differ. [LBR-38]
+        : The libraries are 'sclib_tsmc180_tt' and 'sclib_tsmc180_ss'.
+        : This is a common source of delay calculation confusion and should be avoided.
+            Reading file '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lib/sclib_tsmc180_ff_nldm.lib'
+Warning : Libraries have inconsistent nominal operating conditions. In the Liberty library, there are attributes called nom_voltage, nom_process and nom_temperature. Genus reports the message, if the respective values of the 2 given .libs differ. [LBR-38]
+        : The libraries are 'sclib_tsmc180_tt' and 'sclib_tsmc180_ff'.
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.800000, 25.000000) in library 'sclib_tsmc180_tt_nldm.lib'.
+        : The nominal operating condition is represented, either by the nominal PVT values specified in the library source (via nom_process,nom_voltage and nom_temperature respectively), or by the default PVT values (1.0,1.0,1.0).
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.620000, 125.000000) in library 'sclib_tsmc180_ss_nldm.lib'.
+Info    : Created nominal operating condition. [LBR-412]
+        : Operating condition '_nominal_' was created for the PVT values (1.000000, 1.980000, -40.000000) in library 'sclib_tsmc180_ff_nldm.lib'.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+        : Add the missing output pin(s), then reload the library. Else the library cell will be marked as timing model i.e. unusable. Timing_model means that the cell does not have any defined function. If there is no output pin, Genus will mark library cell as unusable i.e. the attribute 'usable' will be marked to 'false' on the libcell. Therefore, the cell is not used for mapping and it will not be picked up from the library for synthesis. If you query the attribute 'unusable_reason' on the libcell; result will be: 'Library cell has no output pins.'Note: The message LBR-9 is only for the logical pins and not for the power_ground pins. Genus will depend upon the output function defined in the pin group (output pin) of the cell, to use it for mapping. The pg_pin will not have any function defined.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Library cell has no output pins defined. [LBR-9]
+        : Library cell 'ANTENNA' must have an output pin.
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/AND2X1 and sclib_tsmc180_ss/AND2X1).  Deleting (sclib_tsmc180_ss/AND2X1).
+        : Library cell names must be unique.  Any duplicates will be deleted.  Only the first (as determined by the order of libraries) will be retained.
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/ANTENNA and sclib_tsmc180_ss/ANTENNA).  Deleting (sclib_tsmc180_ss/ANTENNA).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/BUFX1 and sclib_tsmc180_ss/BUFX1).  Deleting (sclib_tsmc180_ss/BUFX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQBX1 and sclib_tsmc180_ss/DFFQBX1).  Deleting (sclib_tsmc180_ss/DFFQBX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQQBX1 and sclib_tsmc180_ss/DFFQQBX1).  Deleting (sclib_tsmc180_ss/DFFQQBX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQSRX1 and sclib_tsmc180_ss/DFFQSRX1).  Deleting (sclib_tsmc180_ss/DFFQSRX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/DFFQX1 and sclib_tsmc180_ss/DFFQX1).  Deleting (sclib_tsmc180_ss/DFFQX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX1 and sclib_tsmc180_ss/INVX1).  Deleting (sclib_tsmc180_ss/INVX1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX16 and sclib_tsmc180_ss/INVX16).  Deleting (sclib_tsmc180_ss/INVX16).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX2 and sclib_tsmc180_ss/INVX2).  Deleting (sclib_tsmc180_ss/INVX2).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX32 and sclib_tsmc180_ss/INVX32).  Deleting (sclib_tsmc180_ss/INVX32).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX4 and sclib_tsmc180_ss/INVX4).  Deleting (sclib_tsmc180_ss/INVX4).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/INVX8 and sclib_tsmc180_ss/INVX8).  Deleting (sclib_tsmc180_ss/INVX8).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/MUX2X1 and sclib_tsmc180_ss/MUX2X1).  Deleting (sclib_tsmc180_ss/MUX2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NAND2X1 and sclib_tsmc180_ss/NAND2X1).  Deleting (sclib_tsmc180_ss/NAND2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NAND3X1 and sclib_tsmc180_ss/NAND3X1).  Deleting (sclib_tsmc180_ss/NAND3X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/NOR2X1 and sclib_tsmc180_ss/NOR2X1).  Deleting (sclib_tsmc180_ss/NOR2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/OR2X1 and sclib_tsmc180_ss/OR2X1).  Deleting (sclib_tsmc180_ss/OR2X1).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/TIE0 and sclib_tsmc180_ss/TIE0).  Deleting (sclib_tsmc180_ss/TIE0).
+Warning : Multiply-defined library cell. [LBR-22]
+        : Library-cell name collision (sclib_tsmc180_tt/TIE1 and sclib_tsmc180_ss/TIE1).  Deleting (sclib_tsmc180_ss/TIE1).
+Warning : Maximum message print count reached. [MESG-11]
+        : Maximum print count of '20' reached for message 'LBR-22'.
+@file(synthesis.tcl) 48: read_physical /research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/tech.lef
+Error   : A command argument did not match any of the acceptable command options. [TUI-64] [read_physical]
+        : The argument in question is '/research/ece/lnis-teaching/Designkits/tsmc180nm/full_custom_lib/lef/tech.lef'.
+        : Check the command usage and correct the input to the command.
+  read_physical: read physical design information 
+
+Usage: read_physical [ -lefs <string> | -add_lefs <string> | -oa_ref_libs <string> ]
+
+    -lefs <string>:
+        list of LEF files to read 
+    -add_lefs <string>:
+        list of additional LEF files to read 
+    -oa_ref_libs <string>:
+        list of OA library files to read 
+#@ End verbose source ./synthesis.tcl
+1
+Encountered problems processing file: synthesis.tcl
+WARNING: This version of the tool is 1133 days old.
+
+Another Ctrl-C within 1 second will terminate the tool.
+CURRENT RESOURCES: RT {elapsed: 61s, ST: 7s, FG: 7s, CPU: 3.8%}, MEM {curr: 1.2G, peak: 1.5G, phys curr: 0.4G, phys peak: 0.4G}, SYS {load: 0.3, cpu: 16, total: 62.7G, free: 29.6G}
+@genus:root: 2> 
+@genus:root: 2> 
+@genus:root: 2> exit
+
+Lic Summary:
+[23:07:30.072531] Cdslmd servers: chickasaw
+[23:07:30.072538] Feature usage summary:
+[23:07:30.072539] Genus_Synthesis
+
+Normal exit.
