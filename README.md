@@ -1,189 +1,161 @@
+# High Speed Data Acquisition Controller
 
-# High-Speed Data Acquisition Controller
-
-**VLSI Design Project**
-
-A fully synthesizable, multi-channel data acquisition system designed for real-time biomedical signal processing with advanced arbitration, buffering, and trigger detection capabilities.
+A multi-channel biosignal acquisition controller implemented in SystemVerilog, designed for bedside patient monitoring (ECG/EEG/EMG). Verified with SystemVerilog Assertions, constrained-random testbenches, and functional coverage using Questa Sim.
 
 ---
 
-## Project Overview
+## Overview
 
-This project implements a configurable 16-channel data acquisition controller optimized for high-speed sampling applications. The design features a sophisticated arbitration system, intelligent buffering with backpressure control, derivative-based trigger detection, and comprehensive performance monitoring.
-
-**Target Application:** Real-time biomedical signal acquisition and processing  
-**Technology:** Verilog/SystemVerilog, fully simulation-verified  
-**Verification Coverage:** 70%+ across all modules
-
----
-
-## Design Goals
-
-- **High Throughput:** Support 16 simultaneous ADC channels at configurable sampling rates
-- **Flexible Arbitration:** Four arbitration modes (Round-Robin, Priority, Weighted, Dynamic/Urgent)
-- **Intelligent Buffering:** 672-entry FIFO with adaptive flow control and level-based warnings
-- **Smart Triggering:** Derivative threshold engine with false-positive filtering
-- **Real-time Monitoring:** Performance metrics tracking (throughput, latency, utilization)
-- **Low Latency:** Optimized datapath with minimal cycle overhead
-- **Configurability:** SPI-based runtime reconfiguration
-
----
-## System Architecture
+| Item | Detail |
+|---|---|
+| Language | SystemVerilog |
+| Channels | 8 (ECG ×4, EEG ×2, EMG ×2) |
+| Arbitration | Round-Robin / Priority / Weighted / Dynamic |
+| Output Interface | SPI (bidirectional, 1 MHz) |
+| System Clock | 100 MHz |
+| FIFO Depth | 16 entries, 2-level watermark |
+| Simulation Tool | Questa Sim |
 
 ---
 
-## Module Descriptions
+## Module Summary
 
-### 1. Configurable Arbiter (`configurable_arbiter.sv`)
-**Coverage: 71%**
+| Module | Role |
+|---|---|
+| `configurable_arbiter` | Selects which channel to sample next. Supports 4 modes, configurable via SPI registers. |
+| `single_fifo` | 16-entry FIFO with `almost_full` flag (threshold=12) to decouple ADC sampling from SPI output. |
+| `derivative_threshold_engine` | Detects signal anomalies (e.g., sudden ECG amplitude spikes) using a sliding window false-positive filter. |
+| `performance_monitor` | Tracks throughput (samples/sec), per-channel latency, and FIFO utilization. Asserts warning flags at thresholds. |
+| `high_speed_daq_controller` | Top-level wrapper. Integrates all modules, exposes SPI slave interface for configuration and data readout. |
 
-Selects the next ADC channel based on configurable arbitration policy.
+### Arbitration Modes
 
-**Features:**
-- **Mode 0 (Round-Robin):** Fair sequential channel selection
-- **Mode 1 (Priority-Based):** Highest priority channel wins, tie-breaking logic
-- **Mode 2 (Weighted):** Accumulated weight comparison with automatic reset
-- **Mode 3 (Dynamic/Urgent):** Urgent channels preempt, fallback to weighted
+| Mode | Encoding | Behavior |
+|---|---|---|
+| Round-Robin | `2'b00` | Cycles through enabled channels in order. Guarantees max wait = N−1 cycles (starvation-free). |
+| Priority | `2'b01` | Always selects the highest-priority enabled channel. Risk of starvation for low-priority channels. |
+| Weighted | `2'b10` | ECG channels (weight=2) selected ~2× more often than EEG/EMG (weight=1). Default mode. |
+| Dynamic | `2'b11` | Falls back to Weighted; immediately promotes any channel with `channel_urgent=1` asserted. |
 
-**Key Signals:**
-- `arbiter_mode[1:0]`: Selects arbitration algorithm
-- `channel_priority[3:0][15:0]`: Per-channel priority values (Mode 1)
-- `channel_weight[7:0][15:0]`: Per-channel weights (Mode 2/3)
-- `channel_urgent[15:0]`: Urgent channel mask (Mode 3)
+**Design rationale**: ECG sampling rate (500 Hz) is 2× EEG/EMG (250 Hz), so `weight=2` for ECG naturally encodes this clinical priority in hardware.
 
-### 2. Multi-Level FIFO (`single_fifo.sv`)
-**Coverage: 70%+**
+### FIFO Design
 
-Adaptive buffering with three warning levels and backpressure control.
-
-**Features:**
-- **Depth:** 672 entries (16-bit data)
-- **Level Detection:** L1 (<32), L2 (32-160), L3 (>160)
-- **Backpressure:** Activates at 90% capacity
-- **Overflow Protection:** Level-specific overflow flags
-
-**Performance:**
-- Single-cycle write/read when not full/empty
-- Automatic backpressure signaling prevents data loss
-
-### 3. Derivative Threshold Engine (`derivative_threshold_engine.sv`)
-**Coverage: 70%+**
-
-Detects rapid signal changes using derivative analysis.
-
-**Features:**
-- **Dual Detection:** Amplitude threshold + derivative threshold
-- **Per-Channel History:** Tracks previous samples for all 16 channels
-- **False Positive Filter:** Configurable trigger rate limiting
-- **Confidence Calculation:** 8-bit confidence score based on amplitude and derivative magnitude
-- **Overflow Handling:** Saturating arithmetic prevents spurious triggers
-
-**Configuration:**
-- `CFG_THRESHOLD_LOW`: Amplitude threshold
-- `CFG_THRESHOLD_HIGH`: Derivative threshold
-- `CFG_FILTER_WINDOW`: Max triggers per time window
-
-### 4. Performance Monitor (`performance_monitor.sv`)
-**Coverage: 70%+**
-
-Real-time system metrics and health monitoring.
-
-**Metrics Tracked:**
-- **Throughput:** Samples per second (SPS)
-- **Latency:** Average and maximum (nanoseconds)
-- **FIFO Utilization:** Percentage fullness
-- **Trigger Rate:** Parts per million (ppm)
-
-**Warning Flags:**
-- Low throughput, High latency
-- High FIFO usage, Overflow detected
-- Abnormal trigger rate
-- ADC timeout, System overload
-
-### 5. ADC Interface Controller (`high_speed_daq_controller.sv`)
-
-Main controller with SPI configuration interface.
-
-**Features:**
-- **SPI Slave:** Configuration registers with CDC (Clock Domain Crossing)
-- **State Machine:** Manages ADC conversion flow with settling time
-- **Serial Output:** Bit-serial data transmission
-- **Integration:** Connects all submodules
-
-**SPI Register Map:**
-- `0x0000`: System enable
-- `0x0004`: Channel enable mask
-- `0x0008`: Arbiter mode
-- `0x000C`: Urgent channel mask
-- `0x0020-0x003C`: Channel priorities (Mode 1)
-- `0x0040-0x005C`: Channel weights (Mode 2/3)
+Depth=16 is chosen to cover one full weighted-round (4×ECG + 2×EEG + 2×EMG = 12 slots minimum) plus margin. `almost_full` at count≥12 signals backpressure before overflow. A 2-flop synchronizer converts the SPI-domain read-enable pulse to a single-cycle pulse in the 100 MHz domain.
 
 ---
-## Verification Coverage
 
-![Standalone Tests](https://img.shields.io/badge/Standalone_Tests-74%25+-brightgreen)
-![System Integration](https://img.shields.io/badge/System_Integration-58%25-yellow)
+## Verification
 
-### Standalone Module Coverage (Targeted Testing)
+### Unit Testbenches
 
-| Module | Overall | Branch | Statement | Key Achievement |
-|:-------|:-------:|:------:|:---------:|:----------------|
-| **Arbiter** | **74.3%** | 93.5% | 99.6% | 28% → 74% improvement |
-| **FIFO** | **86.2%** | 87.1% | 98.3% | 100% expression coverage |
-| **Trigger** | **73.9%** | 75.0% | 96.9% | Derivative logic validated |
+#### `tb_single_fifo.sv` — `single_fifo` unit test
 
-### System Integration Coverage
+| Item | Result |
+|---|---|
+| Scoreboard checks | 279 / 279 pass |
+| Overflow attempts observed | 5 |
+| Underflow attempts observed | 42 |
+| Simultaneous R/W cycles | 133 |
+| SVA assertions | 8 / 8 pass |
+| Functional coverage | **100%** |
 
-| Overall | Branch | Condition | Statement | FSM |
-|:-------:|:------:|:---------:|:---------:|:---:|
-| **58.0%** | 75.3% | 37.4% | 85.9% | 100% states |
+**Scenarios**: overflow (write beyond depth), underflow (read from empty), simultaneous read/write (20-cycle steady-state), reset with inputs asserted, constrained-random (500 cycles).
 
-<details>
-<summary>📊 Detailed Coverage Breakdown</summary>
+**SVA (8 assertions)**:
+- A1: `count` always in [0, FIFO_DEPTH]
+- A2: `wr_full ↔ (count == FIFO_DEPTH)`
+- A3: `rd_empty ↔ (count == 0)`
+- A4: `almost_full ↔ (count >= 12)`
+- A5: No overflow — count unchanged when `wr_full` and no simultaneous read
+- A6: No underflow — count unchanged when `rd_empty` and no simultaneous write
+- A7: Count changes by at most ±1 per cycle
+- A8: After reset, `count == 0`, `rd_empty == 1`, `wr_full == 0`
 
-#### Arbiter Module (`tb_arbiter`)
-| Metric | Bins | Hits | Coverage |
-|--------|-----:|-----:|---------:|
-| Branches | 46 | 43 | **93.47%** |
-| Conditions | 26 | 18 | 69.23% |
-| Expressions | 12 | 4 | 33.33% |
-| Statements | 244 | 243 | **99.59%** |
-| Toggles | 254 | 193 | 75.98% |
+#### `tb_configurable_arbiter.sv` — `configurable_arbiter` unit test
 
-#### FIFO Module (`tb_fifo`)
-| Metric | Bins | Hits | Coverage |
-|--------|-----:|-----:|---------:|
-| Branches | 31 | 27 | **87.09%** |
-| Conditions | 11 | 9 | 81.81% |
-| Expressions | 3 | 3 | **100%** |
-| Statements | 117 | 115 | **98.29%** |
+| Item | Result |
+|---|---|
+| All directed scenarios | PASS |
+| SVA assertions | 9 / 9 pass |
+| Functional coverage | **100%** |
 
-#### Trigger Engine (`tb_trigger`)
-| Metric | Bins | Hits | Coverage |
-|--------|-----:|-----:|---------:|
-| Branches | 28 | 21 | **75.0%** |
-| Conditions | 10 | 4 | 40.0% |
-| Expressions | 19 | 14 | **73.68%** |
-| Statements | 161 | 156 | **96.89%** |
-| Toggles | 372 | 313 | 84.13% |
+**Scenarios**: reset with all inputs asserted, all-8-channel simultaneous request (across all 4 modes), all 16 mode-transition combinations, Dynamic mode urgent priority, `adc_busy` blocking, constrained-random (300 cycles).
 
-</details>
+**SVA (9 assertions)**:
+- A1: `selected_channel` always in [0, NUM_CHANNELS−1]
+- A2: `channel_valid=1` → selected channel is `enable && ready`
+- A3: `adc_busy=1` → `channel_valid=0`
+- A4: No enabled+ready channel → `channel_valid=0`
+- A5: After reset, `rr_counter == 0`
+- A6: After reset, all `weight_accumulator == 0`
+- A7: In Round-Robin mode, `rr_counter` increments by 1 (mod N) on each `channel_accept`
+- A8: In Dynamic mode with urgent channels, selected channel must have `channel_urgent=1`
+- A9: In Priority mode, `channel_priority[selected_channel] == max` over all enabled+ready channels
 
-### Coverage Methodology
+#### `tb_top_spi.sv` — End-to-end SPI datapath test
 
-**Two-Tier Verification Strategy:**
+| Item | Result |
+|---|---|
+| Scoreboard checks | 16 / 16 pass |
+| SPI write (config) | Verified: `channel_enable`, `arbiter_mode` registers |
+| SPI read (FIFO) | Verified: 16 entries match expected `{channel, counter}` format |
 
-1. **Standalone Testbenches** (74%+ average)
-   - Direct signal control eliminates system constraints
-   - Targeted stimulus for edge cases and corner conditions
-   - Achieves high coverage through independent module testing
+Tests SPI write→register→ADC→FIFO→SPI read full datapath, including CDC boundary.
 
-2. **System Integration** (58%)
-   - End-to-end functional validation with real biosignal data
-   - Cross-module interaction verification
-   - Lower coverage expected due to integration constraints
+### Coverage Report
 
-**Key Insight:** Arbiter coverage improved from 28% (system-level) to 74% (standalone) by identifying and eliminating signal dependency limitations through independent testbench development.
+Generated with Questa Sim `vcover`:
 
-> 📁 Full coverage reports: `/Coverage files/`  
-=======
+```
+Covergroup Coverage:   100.00%
+Assertion Coverage:    100.00%  (17 assertions, 0 failures)
+Statement Coverage:     91.91%  (untouched branches are error paths never triggered — expected)
+```
+
+Untouched branches (scoreboard mismatch, FAIL outputs) are intentionally unreachable in a bug-free design.
+
+---
+
+## Running the Simulation
+
+### Requirements
+
+- Questa Sim
+
+### FIFO unit test
+
+```tcl
+vlog -sv high_speed_daq_controller.sv
+vlog -sv +cover=bcestf tb_single_fifo.sv
+vsim -voptargs="+acc" -coverage tb_single_fifo
+coverage save -onexit tb_single_fifo.ucdb
+run -all
+```
+
+```bash
+vcover report tb_single_fifo.ucdb -details -output fifo_coverage.txt
+```
+
+### Arbiter unit test
+
+```tcl
+vlog -sv high_speed_daq_controller.sv
+vlog -sv +cover=bcestf tb_configurable_arbiter.sv
+vsim -voptargs="+acc" -coverage tb_configurable_arbiter
+coverage save -onexit tb_configurable_arbiter.ucdb
+run -all
+```
+
+```bash
+vcover report tb_configurable_arbiter.ucdb -details -output arbiter_coverage.txt
+```
+
+### SPI test
+
+```tcl
+vlog -sv high_speed_daq_controller.sv
+vlog -sv tb_top_spi.sv
+vsim -voptargs="+acc" tb_top_spi
+run -all
+```
