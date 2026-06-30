@@ -1,8 +1,8 @@
 // =============================================================================
 // tb_fifo.sv
-// single_fifo 모듈 단위 검증
+// single_fifo
 //  - Directed test: overflow, underflow, simultaneous read/write
-//  - SVA: count/full/empty invariant, overflow/underflow 방지, data integrity
+//  - SVA: count/full/empty invariant, overflow/underflow, data integrity
 //  - Functional coverage: FIFO_DEPTH=16, almost_full threshold=12
 // =============================================================================
 `timescale 1ns/1ps
@@ -51,12 +51,12 @@ module tb_single_fifo;
     // 통계
     int stat_overflow_attempts   = 0; // wr_en && wr_full
     int stat_underflow_attempts  = 0; // rd_en && rd_empty
-    int stat_simultaneous_rw     = 0; // wr_en && !wr_full && rd_en && !rd_empty (성공한 동시 R/W)
+    int stat_simultaneous_rw     = 0; // wr_en && !wr_full && rd_en && !rd_empty
 
     // =========================================================================
     // SVA
     // =========================================================================
-    // A1: count는 항상 0..FIFO_DEPTH 범위
+    // A1: count in 0..FIFO_DEPTH range
     property p_count_range;
         @(posedge clk) disable iff (!rst_n)
         (count >= 0) && (count <= FIFO_DEPTH);
@@ -88,7 +88,7 @@ module tb_single_fifo;
     assert property (p_almost_full_consistency)
         else $error("[SVA-A4][%0t] almost_full inconsistent: almost_full=%0b count=%0d", $time, almost_full, count);
 
-    // A5: wr_full일 때 wr_en이 있어도 count는 증가하지 않음 (overflow 방지)
+    // A5: wr_full, the count does not increase even if wr_en is present (prevents overflow)
     property p_no_overflow;
         @(posedge clk) disable iff (!rst_n)
         (wr_en && wr_full && !(rd_en && !rd_empty)) |=> (count == $past(count));
@@ -96,7 +96,7 @@ module tb_single_fifo;
     assert property (p_no_overflow)
         else $error("[SVA-A5][%0t] overflow: count changed while full and no read", $time);
 
-    // A6: rd_empty일 때 rd_en이 있어도 count는 감소하지 않음 (underflow 방지)
+    // A6: when rd_empty, the count does not decrease even if rd_en exists (prevents underflow)
     property p_no_underflow;
         @(posedge clk) disable iff (!rst_n)
         (rd_en && rd_empty && !(wr_en && !wr_full)) |=> (count == $past(count));
@@ -104,7 +104,7 @@ module tb_single_fifo;
     assert property (p_no_underflow)
         else $error("[SVA-A6][%0t] underflow: count changed while empty and no write", $time);
 
-    // A7: count는 한 클럭에 최대 +-1만 변할 수 있음 (동시 R/W=0, 단일 R or W=+-1, 동시 성공 R/W=0)
+    // A7: The count can change by a maximum of ±1 per clock cycle (simultaneous R/W=0, single R or W=±1, simultaneous success R/W=0)
     property p_count_delta;
         @(posedge clk) disable iff (!rst_n)
         ($past(rst_n)) |-> ((count - $past(count)) inside {-1, 0, 1});
@@ -112,7 +112,7 @@ module tb_single_fifo;
     assert property (p_count_delta)
         else $error("[SVA-A7][%0t] count changed by more than 1: count=%0d past=%0d", $time, count, $past(count));
 
-    // A8: reset 시 count==0, rd_empty==1, wr_full==0
+    // A8: reset, count==0, rd_empty==1, wr_full==0
     property p_reset_state;
         @(posedge clk) (!rst_n) |=> (count == 0 && rd_empty == 1'b1 && wr_full == 1'b0);
     endproperty
@@ -151,22 +151,21 @@ module tb_single_fifo;
     // =========================================================================
     logic do_write, do_read;
     always @(posedge clk) begin
-        #1; // DUT의 always_ff(nonblocking) 갱신이 모두 끝난 뒤 안정된 값을 샘플링
+        #1;
         if (!rst_n) begin
             ref_q.delete();
         end else begin
-            // -----------------------------------------------------------------
-            // 0. count 비교를 ref_q 변경 전에 수행.
-            //    현재 클럭의 count는 "이전 클럭까지의 write/read가 반영된" 값이고,
-            //    ref_q는 아직 이번 클럭의 do_write/do_read를 반영하기 전이므로
-            //    이 시점에서 둘은 같아야 한다. (먼저 비교 -> 그 다음 ref_q 갱신)
-            // -----------------------------------------------------------------
+        // -----------------------------------------------------------------
+        // 0. Perform count comparison before updating ref_q.
+        // The count for the current clock is a value that "reflects write/read operations up to the previous clock,"
+        // and since ref_q has not yet reflected the do_write/do_read operations for this clock,
+        // at this point, the two must be equal. (Compare first -> then update ref_q)
+        // -----------------------------------------------------------------
             if (count !== ref_q.size()) begin
                 sb_errors++;
                 $error("[SB-FIFO][%0t] count mismatch: dut=%0d ref=%0d", $time, count, ref_q.size());
             end
 
-            // 이번 클럭에서 실제 일어날 일을 미리 계산 (combinational 신호 기준)
             do_write = wr_en && !wr_full;
             do_read  = rd_en && !rd_empty;
 
@@ -174,7 +173,6 @@ module tb_single_fifo;
             if (rd_en && rd_empty) stat_underflow_attempts++;
             if (do_write && do_read) stat_simultaneous_rw++;
 
-            // read 먼저 체크 (이번 클럭 시작 시 rd_data는 이전 ref_q[0])
             if (do_read) begin
                 sb_checks++;
                 if (ref_q.size() == 0 || rd_data !== ref_q[0]) begin
@@ -203,7 +201,7 @@ module tb_single_fifo;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 1: Overflow - FIFO_DEPTH개 이상 write 시도
+        // Scenario 1: Overflow
         // -----------------------------------------------------------------
         $display("[TB-FIFO] Scenario 1: Overflow test");
         for (int i = 0; i < FIFO_DEPTH + 4; i++) begin
@@ -220,7 +218,7 @@ module tb_single_fifo;
             $display("[TB-FIFO] Scenario1 PASS: count=%0d (FIFO correctly saturated)", count);
 
         // -----------------------------------------------------------------
-        // Scenario 2: Underflow - 비어있는 FIFO에서 read 시도
+        // Scenario 2: Underflow
         // -----------------------------------------------------------------
         $display("[TB-FIFO] Scenario 2: Underflow test");
         // 먼저 전부 비우기
@@ -244,7 +242,6 @@ module tb_single_fifo;
             wr_en   = 1;
             @(posedge clk);
         end
-        // 동시 R/W: count가 일정하게 유지되어야 함
         for (int i = 0; i < 20; i++) begin
             wr_data = 200 + i;
             wr_en   = 1;
@@ -256,7 +253,7 @@ module tb_single_fifo;
         $display("[TB-FIFO] Scenario3 PASS: simultaneous R/W ran for 20 cycles, count=%0d", count);
 
         // -----------------------------------------------------------------
-        // Scenario 4: Reset 중 입력 발생 (wr_en/rd_en asserted during reset)
+        // Scenario 4: wr_en/rd_en asserted during reset
         // -----------------------------------------------------------------
         $display("[TB-FIFO] Scenario 4: Inputs asserted during reset");
         wr_data = 16'hDEAD;
@@ -285,8 +282,7 @@ module tb_single_fifo;
             @(posedge clk);
         end
         wr_en = 0; rd_en = 0;
-
-        // 남은 데이터 전부 비우기 (최종 정합성 체크)
+        
         rd_en = 1;
         repeat (FIFO_DEPTH + 2) @(posedge clk);
         rd_en = 0;
