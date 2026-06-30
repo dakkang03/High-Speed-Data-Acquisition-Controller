@@ -1,14 +1,11 @@
 // =============================================================================
-// high_speed_daq_controller (v2)
-//  - 변경점:
-//    1) NUM_CHANNELS=8, FIFO_DEPTH=16로 통일
-//    2) Reset 기본값: arbiter_mode=Weighted(2'b10),
+// high_speed_daq_controller
+//    1) NUM_CHANNELS=8, FIFO_DEPTH=16
+//    2) Reset: arbiter_mode=Weighted(2'b10),
 //       channel_weight: ECG(ch0-3)=2, EEG/EMG(ch4-7)=1
-//    3) SPI 양방향(v1, CDC 생략 단순화):
-//       - command byte의 MSB(spi_shift_reg[6])로 read/write 구분
-//       - read인 경우 ADDR_LOW 완료 시점에 fifo_rd_en pulse 발생
-//         (clk와 spi_sclk이 비동기이므로 v1에서는 "충분히 느린 spi_sclk" 가정하에
-//          fifo_rd_data를 비동기적으로 직접 latch - 추후 CDC 추가 예정)
+//    3) SPI:
+//       - distinguish read/write by command byte of MSB(spi_shift_reg[6])
+//       - if read, ADDR_LOWafter fifo_rd_en pulse
 // =============================================================================
 module high_speed_daq_controller #(
     parameter NUM_CHANNELS = 8,
@@ -77,9 +74,9 @@ logic ack_clk_sync1, ack_clk_sync2;
 // --- SPI READ (v1, simplified, no CDC) ---
 logic spi_read_mode;          // command MSB: 1=read, 0=write
 logic [15:0] fifo_read_buffer; // latched fifo_rd_data, shifted out via MISO
-logic fifo_rd_en_spi;          // pulse: request FIFO read (async-ish, v1)
+logic fifo_rd_en_spi;          // pulse: request FIFO read
 
-// clk 도메인: fifo_rd_en_spi(spi_sclk, level) -> fifo_rd_en(clk, 1-cycle pulse)
+// clk: fifo_rd_en_spi(spi_sclk, level) -> fifo_rd_en(clk, 1-cycle pulse)
 logic rd_req_sync1, rd_req_sync2, rd_req_sync2_d;
 logic [15:0] fifo_read_data_latched;
 
@@ -116,11 +113,7 @@ logic [7:0] settling_counter;
 logic sample_ready;
 logic [ADC_WIDTH-1:0] captured_data;
 logic [TIMESTAMP_WIDTH-1:0] global_timestamp;
-// START_CONVERSION 시점의 selected_channel을 latch.
-// weighted mode에서는 weight_accumulator가 매 클럭 갱신되어
-// START_CONVERSION ~ CAPTURE_DATA(2클럭) 사이 selected_channel이 바뀔 수 있음.
-// fifo_wr_data의 channel 필드는 "데이터를 실제로 샘플링한 채널"이어야 하므로,
-// 변환 시작 시점의 채널을 latch해서 CAPTURE_DATA까지 들고 간다.
+// latch selected_channel at the START_CONVERSION point
 logic [CHANNEL_WIDTH-1:0] locked_channel;
 
 logic adc_busy_internal;
@@ -143,7 +136,7 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
 end
 
 // =============================================================================
-// SPI Slave Interface (v2: read/write 구분 추가)
+// SPI Slave Interface
 // =============================================================================
 always_ff @(posedge spi_sclk or negedge rst_n) begin
     if (!rst_n) begin
@@ -184,22 +177,17 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
 
             if (bit_counter == 7) begin
                 // ---------------------------------------------------------
-                // NOTE: state 전이는 "바이트 완료 후 1 edge 뒤"에 일어나므로,
-                // spi_state==X 인 동안 실제로 수신 중인 바이트는 X의 "한 단계 전"
-                // 바이트이다. 즉 아래 case label은 원래 의도한 state보다
-                // 한 단계 앞선(이전) state로 작성해야 한다:
-                //   SPI_IDLE      동안 -> CMD byte 수신중   -> read_mode 캡처
-                //   SPI_CMD       동안 -> ADDR_HIGH 수신중  -> addr[15:8]
-                //   SPI_ADDR_HIGH 동안 -> ADDR_LOW  수신중  -> addr[7:0], fifo_rd_en_spi
-                //   SPI_ADDR_LOW  동안 -> DATA0(상위) 수신중-> wdata[31:24]
-                //   SPI_DATA_BYTE0동안 -> DATA1     수신중 -> wdata[23:16]
-                //   SPI_DATA_BYTE1동안 -> DATA2     수신중 -> wdata[15:8]
-                //   SPI_DATA_BYTE2동안 -> DATA3(LSB)수신중 -> wdata[7:0], write_pending
+                //   SPI_IDLE       -> CMD byte   -> read_mode
+                //   SPI_CMD        -> ADDR_HIGH  -> addr[15:8]
+                //   SPI_ADDR_HIGH  -> ADDR_LOW   -> addr[7:0], fifo_rd_en_spi
+                //   SPI_ADDR_LOW   -> DATA0      -> wdata[31:24]
+                //   SPI_DATA_BYTE0 -> DATA1      -> wdata[23:16]
+                //   SPI_DATA_BYTE1 -> DATA2      -> wdata[15:8]
+                //   SPI_DATA_BYTE2 -> DATA3(LSB) -> wdata[7:0], write_pending
                 // ---------------------------------------------------------
                 case (spi_state)
                     SPI_IDLE: begin
-                        // command byte 완성: MSB(spi_shift_reg[6]) + 현재 mosi = bit0
-                        // -> read/write flag는 byte의 최상위 비트
+                        // command byte: MSB(spi_shift_reg[6]) + current mosi = bit0
                         spi_read_mode <= spi_shift_reg[6];
                     end
                     SPI_CMD:
@@ -207,7 +195,7 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
                     SPI_ADDR_HIGH: begin
                         reg_addr_spi[7:0] <= {spi_shift_reg[6:0], spi_mosi};
                         if (spi_read_mode) begin
-                            // address phase 종료 -> FIFO read 1회 요청
+                            // ended address phase -> request FIFO read one time
                             fifo_rd_en_spi <= 1'b1;
                         end
                     end
@@ -228,7 +216,6 @@ always_ff @(posedge spi_sclk or negedge rst_n) begin
 
         if (ack_spi_sync2 && req_valid_spi) req_valid_spi <= 1'b0;
 
-        // FIFO read pulse: clk 도메인에서 이미 안정적으로 latch된 값을 가져옴
         if (fifo_rd_en_spi) begin
             fifo_read_buffer <= fifo_read_data_latched;
         end
@@ -253,8 +240,6 @@ always_comb begin
     end
 end
 
-// MISO: read mode일 때, ADDR_LOW/DATA_BYTE0 state 동안 fifo_read_buffer를 MSB부터 shift-out
-// (state 정렬 보정: ADDR_LOW 동안 응답 byte0(상위), DATA_BYTE0 동안 응답 byte1(하위)을 출력)
 always_comb begin
     if (spi_read_mode) begin
         case (spi_state)
@@ -268,11 +253,7 @@ always_comb begin
 end
 
 // =============================================================================
-// FIFO read enable (clk 도메인)
-//   fifo_rd_en_spi는 spi_sclk 도메인에서 최대 1 spi_sclk 주기(=수십~수백 clk)
-//   동안 유지되는 level 신호이므로, 그대로 rd_en에 연결하면 FIFO가
-//   여러 번(혹은 거의 전부) pop되는 버그가 발생한다.
-//   -> 2-flop synchronizer + rising-edge detect로 1-clk pulse로 변환
+// FIFO read enable (clk domain)
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -288,16 +269,13 @@ end
 
 assign fifo_rd_en = rd_req_sync2 && !rd_req_sync2_d; // rising edge -> 1 clk pulse
 
-// fifo_rd_en이 pulse되는 그 클럭에 "pop되는 값"을 clk 도메인에서 즉시 latch
-// (spi_sclk 도메인에서 latch하면 1 spi_sclk 주기(100clk) 후라 이미 다음 원소를
-//  가리키게 되는 off-by-one이 발생함)
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) fifo_read_data_latched <= 16'h0;
     else if (fifo_rd_en) fifo_read_data_latched <= fifo_rd_data;
 end
 
 // =============================================================================
-// Request Synchronization (기존 write 경로 동일)
+// Request Synchronization
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -347,7 +325,7 @@ always_ff @(posedge clk or negedge rst_n) begin
 end
 
 // =============================================================================
-// Configuration Registers (v2: Weighted 기본 모드 + ECG/EEG/EMG weight)
+// Configuration Registers
 //   CH0-3 = ECG (weight=2), CH4-5 = EEG (weight=1), CH6-7 = EMG (weight=1)
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
@@ -404,7 +382,7 @@ always_ff @(posedge clk or negedge rst_n) begin
 end
 
 // =============================================================================
-// ADC Control State Machine (변경 없음)
+// ADC Control State Machine
 // =============================================================================
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -414,10 +392,6 @@ always_ff @(posedge clk or negedge rst_n) begin
         if (current_state == SELECT_CHANNEL) settling_counter <= settling_counter + 1;
         else settling_counter <= 0;
         if (current_state == CAPTURE_DATA) captured_data <= adc_data;
-        // 변환을 "시작"하는 이 사이클의 selected_channel을 latch.
-        // (이 시점이 곧 adc_channel_sel로 외부에 알려지는 채널이며,
-        //  2클럭 뒤 CAPTURE_DATA에서 weight_accumulator 갱신으로
-        //  selected_channel이 바뀌어도 영향받지 않음)
         if (current_state == START_CONVERSION) locked_channel <= selected_channel;
     end
 end
@@ -451,9 +425,6 @@ always_ff @(posedge clk or negedge rst_n) begin
     end else begin
         if (sample_ready && !fifo_full) begin
             fifo_wr_en <= 1'b1;
-            // captured_data는 CAPTURE_DATA 사이클에 갱신되어 "다음 클럭부터" 반영되므로,
-            // 이 사이클(CAPTURE_DATA, sample_ready=1)에서 읽으면 1라운드 전 값(stale)이 됨.
-            // selected_channel(이번 라운드 값)과 짝을 맞추기 위해 adc_data를 직접 사용.
             fifo_wr_data <= {1'b0, locked_channel, adc_data}; // CHANNEL_WIDTH=3 -> [1+3+12=16]
         end else fifo_wr_en <= 1'b0;
     end
