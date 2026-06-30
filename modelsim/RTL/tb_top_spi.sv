@@ -1,19 +1,18 @@
 // =============================================================================
 // tb_top_spi.sv
-//   - high_speed_daq_controller (top-level) 검증
-//   - SPI write (config register 설정) + SPI read (FIFO -> MISO) 트랜잭션
-//   - ADC behavioral model
-//   - CDC(v1, no-sync) 동작을 waveform으로 직접 확인하기 위한 목적
-//
-//   설계 결정 (예측 가능하게 만들기 위함):
-//     - SPI write로 config_registers[1]=8'h01 (CH0만 enable)
-//                    config_registers[2]=2'b00 (Round-Robin)
-//     -> CH0만 항상 선택됨 (arbiter 단순화)
-//     - test_mode=0 : channel_ready_internal = channel_enable, adc_busy=0 고정
-//     - ADC model: adc_start_conv 받으면 1클럭 뒤 adc_conv_done=1,
-//                   adc_data = 증가하는 카운터 값
-//     => FIFO에 들어가는 값 = {1'b0, 3'b000, adc_counter} (하위 12bit가 카운터값)
-//     - SPI read로 FIFO에서 순서대로 꺼내 expected 값과 비교
+// - high_speed_daq_controller (top-level) verification
+// - SPI write (config register setting) + SPI read (FIFO -> MISO) transaction
+// - ADC behavioral model
+// - Purpose: To directly verify CDC (v1, no-sync) operation via waveform
+// Design decision (to make it predictable):
+// - config_registers[1]=8'h01 via SPI write (enable only CH0)
+// config_registers[2]=2'b00 (Round-Robin)
+// -> Only CH0 is always selected (arbiter simplification)
+// - test_mode=0 : channel_ready_internal = channel_enable, adc_busy=0 fixed
+// - ADC model: when adc_start_conv is received, adc_conv_done=1 after 1 clock cycle,
+// adc_data = incrementing counter value
+// => Value entering FIFO = {1'b0, 3'b000, adc_counter} (lower 12 bits are counter value)
+// - Read values ​​sequentially from FIFO using SPI read and compare with expected value
 // =============================================================================
 
 `timescale 1ns/1ps
@@ -33,8 +32,6 @@ module tb_top_spi;
   initial clk = 0;
   always #5 clk = ~clk; // 100MHz (10ns period)
 
-  // spi_sclk: clk보다 훨씬 느림 (v1 CDC 가정: spi_sclk << clk)
-  // period = 1000ns -> clk(10ns)의 100배
   logic spi_sclk;
   initial spi_sclk = 0;
   always #500 spi_sclk = ~spi_sclk;
@@ -64,8 +61,6 @@ module tb_top_spi;
 
   // ---------------------------------------------------------------------
   // ADC Behavioral Model
-  //   - adc_start_conv 다음 클럭에 adc_conv_done=1, adc_data=counter
-  //   - counter는 매 변환마다 +1
   // ---------------------------------------------------------------------
   logic [ADC_WIDTH-1:0] adc_counter;
   logic [15:0] expected_fifo_q [0:1023];
@@ -85,8 +80,6 @@ module tb_top_spi;
         adc_conv_done <= 1'b1;
         adc_data      <= adc_counter;
 
-        // RTL이 locked_channel(=adc_start_conv 시점의 selected_channel)을
-        // fifo_wr_data의 channel 필드로 사용하므로, 모델도 동일 시점에 기록
         expected_fifo_q[exp_tail] <= {1'b0, adc_channel_sel, adc_counter};
         exp_tail <= exp_tail + 1;
 
@@ -96,38 +89,31 @@ module tb_top_spi;
   end
 
   // ---------------------------------------------------------------------
-  // test_mode 설정: channel_ready_internal = channel_enable (항상 ready)
+  // test_mode: channel_ready_internal = channel_enable
   // ---------------------------------------------------------------------
   assign test_mode = 1'b0;
-  assign test_channel_ready = '0; // test_mode=0이므로 미사용
+  assign test_channel_ready = '0;
 
   // =========================================================================
   // SPI Driver Tasks
   //   command byte: [7]=R/W (1=read,0=write), [6:0]=reserved(0)
   //   address: 16bit (register index << 2, 즉 reg_addr_cdc[7:2]=reg_index)
   //   write data: 32bit
-  //   read data : 16bit (FIFO 데이터, BYTE0=상위8, BYTE1=하위8)
-  //
-  //   DUT가 posedge spi_sclk에서 spi_mosi를 샘플링하므로,
-  //   negedge spi_sclk에서 spi_mosi를 세팅한다 (setup time 확보)
+  //   read data : 16bit (FIFO data, BYTE0=upper 8, BYTE1=under8)
   // =========================================================================
 
-  // CS를 명시적으로 deassert(1)했다가 다시 assert(0)하면서,
-  // 2-flop spi_cs_n_sync가 1->0으로 정상 settle할 시간을 줌.
-  // settle 중의 edge들은 spi_cs_n_sync==1인 동안 bit_counter=0/shift_reg=0으로
-  // 유지되므로(DUT의 if(spi_cs_n_sync) 분기) 안전하게 "흡수"된다.
   task spi_begin_transaction();
     spi_mosi = 0;
     spi_cs_n = 1;
-    repeat (3) @(posedge spi_sclk); // cs_n_sync -> 1, state/bit_counter reset 확정
+    repeat (3) @(posedge spi_sclk); // cs_n_sync -> 1, state/bit_counter reset
     spi_cs_n = 0;
-    repeat (2) @(posedge spi_sclk); // cs_n_sync -> 0 으로 정확히 settle (bit_counter=0 유지)
+    repeat (2) @(posedge spi_sclk); // cs_n_sync -> 0
   endtask
 
   task spi_send_bit(input logic b);
     @(negedge spi_sclk);
     spi_mosi = b;
-    @(posedge spi_sclk); // DUT가 이 edge에서 샘플링
+    @(posedge spi_sclk);
   endtask
 
   task spi_send_byte(input logic [7:0] data);
@@ -145,19 +131,19 @@ module tb_top_spi;
     spi_send_byte(wdata[15:8]);
     spi_send_byte(wdata[7:0]);
     @(negedge spi_sclk);
-    spi_cs_n = 1; // CS deassert -> write_pending 처리 트리거
-    repeat (3) @(posedge spi_sclk); // ack handshake 진행 시간 확보
+    spi_cs_n = 1;
+    repeat (3) @(posedge spi_sclk);
   endtask
 
-  // SPI Read: FIFO read (1개 word = 16bit, 2바이트)
+  // SPI Read: FIFO read
   task spi_read_fifo(output logic [15:0] rdata);
     logic [7:0] byte0, byte1;
     spi_begin_transaction();
     spi_send_byte(8'h80); // CMD: read (MSB=1)
-    spi_send_byte(8'h00); // addr high (read에서는 의미 없음, 0)
-    spi_send_byte(8'h00); // addr low -> 이 시점에 fifo_rd_en_spi pulse 발생
+    spi_send_byte(8'h00); // addr high
+    spi_send_byte(8'h00); // addr low -> fifo_rd_en_spi pulse 
 
-    // DATA_BYTE0/1 구간: MISO에서 읽어옴 (MOSI는 don't-care, 0으로 둠)
+    // DATA_BYTE0/1: MISO
     byte0 = 8'h00;
     byte1 = 8'h00;
     for (int i = 7; i >= 0; i--) begin
@@ -179,13 +165,13 @@ module tb_top_spi;
   endtask
 
   // =========================================================================
-  // DEBUG MONITOR: SPI read CDC 관련 신호 변화를 추적
+  // DEBUG MONITOR: SPI read CDC
   // =========================================================================
   always @(posedge spi_sclk) begin
     if (dut.fifo_rd_en_spi)
       $display("[DBG-SPI][%0t] fifo_rd_en_spi=1 spi_read_mode=%0b spi_shift_reg=%h bit_counter=%0d spi_state=%0d",
                $time, dut.spi_read_mode, dut.spi_shift_reg, dut.bit_counter, dut.spi_state);
-    if (dut.fifo_rd_en_spi) // edge에서 latch되는 시점도 같이 표시
+    if (dut.fifo_rd_en_spi)
       $display("[DBG-SPI][%0t] (latched next) fifo_read_data_latched(prev val)=%h", $time, dut.fifo_read_data_latched);
   end
 
@@ -196,7 +182,6 @@ module tb_top_spi;
   end
 
   always @(posedge spi_sclk) begin
-    // SPI_CMD 완료 시점(spi_read_mode 갱신 직후 edge)에 값 출력
     if (dut.spi_state == dut.SPI_ADDR_HIGH)
       $display("[DBG-SPI][%0t] entered SPI_ADDR_HIGH, spi_read_mode=%0b spi_shift_reg=%h", $time, dut.spi_read_mode, dut.spi_shift_reg);
   end
@@ -217,38 +202,38 @@ module tb_top_spi;
     repeat (5) @(posedge clk);
 
     // -------------------------------------------------------------------
-    // 1. SPI write: CH0만 enable, RR mode
+    // 1. SPI write: CH0 enable, RR mode
     //    config_registers[1] -> addr = 1<<2 = 4  (reg_addr_cdc[7:2]=1)
     //    config_registers[2] -> addr = 2<<2 = 8
     // -------------------------------------------------------------------
-    spi_write_reg(16'h0004, 32'h0000_0001); // channel_enable = 8'h01 (CH0만)
+    spi_write_reg(16'h0004, 32'h0000_0001); // channel_enable = 8'h01 (CH0)
     spi_write_reg(16'h0008, 32'h0000_0000); // arbiter_mode   = 0 (RR)
 
     // -------------------------------------------------------------------
-    // 2. FIFO에 데이터가 쌓일 시간을 줌
-    //    CH0가 RR로 계속 선택 -> ADC FSM 1회전마다 1 sample
-    //    FSM 1회전 ~ settling(8) + start(1) + wait(1) + capture(1) + next(1) ~ 12 cycles
-    //    여유있게 N개 샘플 만들기 위해 충분히 대기
+    // 2. Allow time for data to accumulate in the FIFO
+    // CH0 continuously selects RR -> 1 sample per ADC FSM rotation
+    // 1 FSM rotation ~ settling(8) + start(1) + wait(1) + capture(1) + next(1) ~ 12 cycles
+    // Wait sufficiently to generate N samples with ample time
     // -------------------------------------------------------------------
     repeat (200) @(posedge clk); // 약 10+ samples 생성 예상
 
     // -------------------------------------------------------------------
-    // 2b. FIFO 채우기 완료 후, read 도중 새 샘플이 추가/대체되지 않도록
-    //     channel_enable=0으로 ADC 샘플 생성을 멈춤
-    //     (SPI read 1회 = 약 4500 clk이 걸려, 막아두지 않으면 read 도중에도
-    //      FIFO가 계속 refill되어 idx 기반 expected 비교가 무의미해짐)
+    // 2b. After the FIFO is full, to prevent new samples from being added or replaced during a read
+    // Stop ADC sample generation by setting channel_enable=0
+    // (One SPI read takes approximately 4500 clock cycles; if this is not blocked,
+    // the FIFO will continue to refill even during a read, rendering index-based expected comparisons meaningless)
     // -------------------------------------------------------------------
-    spi_write_reg(16'h0004, 32'h0000_0000); // channel_enable = 0 (모든 채널 비활성)
-    repeat (20) @(posedge clk); // 진행 중이던 FSM이 안전하게 멈출 시간
+    spi_write_reg(16'h0004, 32'h0000_0000); // channel_enable = 0
+    repeat (20) @(posedge clk);
 
     // -------------------------------------------------------------------
-    // 3. SPI read로 FIFO 데이터 꺼내서 expected와 비교
-    //    exp_tail 까지 쌓인 만큼 읽음
+    // 3. Retrieve FIFO data using SPI read and compare with expected
+    // Read up to exp_tail
     // -------------------------------------------------------------------
     begin
       int n_expected;
       n_expected = exp_tail;
-      if (n_expected > 16) n_expected = 16; // FIFO_DEPTH=16 -> wr_full 이후 샘플은 버려짐
+      if (n_expected > 16) n_expected = 16; // FIFO_DEPTH=16 -> wr_full
       $display("Expected FIFO entries available (total generated=%0d, comparing first %0d): %0d",
                exp_tail, n_expected, n_expected);
 
