@@ -1,8 +1,8 @@
 // =============================================================================
-// tb_high_speed_daq_controller.sv  (ModelSim-Altera Starter Edition ?? ??)
-//   - covergroup, assert property, randomize/randcase/randsequence ???
-//   - ??? ?? ??? "?? ??? + always ?? ? if/$display"? ??
-//   - $urandom / $urandom_range ? ?? (Starter?? ???? ?? system function)
+// tb_high_speed_daq_controller.sv
+// - covergroup, assert property, randomize/randcase/randsequence not used
+// - Implement the same validation items using "manual counter + if/$display within always block"
+// - Use only $urandom / $urandom_range (default system functions supported in Starter)
 // =============================================================================
 
 `timescale 1ns/1ps
@@ -69,7 +69,7 @@ module tb_high_speed_daq_controller;
   );
 
   // =========================================================================
-  // ARBITER ??: Reference Model + Scoreboard
+  // ARBITER: Reference Model + Scoreboard
   // =========================================================================
   logic [7:0] ref_weight_acc [NUM_CHANNELS-1:0];
   logic [CHANNEL_WIDTH-1:0] ref_rr_counter;
@@ -154,10 +154,9 @@ module tb_high_speed_daq_controller;
   end
 
   // =========================================================================
-  // FIFO ??: Reference Model (??+???, queue ??) + Scoreboard
+  // FIFO: Reference Model (array+pointer, instead of queue) + Scoreboard
   // =========================================================================
-  // Starter Edition?? ?? queue([$]) ??? -> ?? ?? + head/tail? ??
-  logic [15:0] ref_fifo_mem [0:255]; // ??? ? ?? ??
+  logic [15:0] ref_fifo_mem [0:255];
   int ref_head, ref_tail, ref_size;
   int sb_fifo_checks, sb_fifo_errors;
 
@@ -183,9 +182,6 @@ module tb_high_speed_daq_controller;
     if (!rst_n) begin
       ref_fifo_reset();
     end else begin
-      // ---- DUT? count/wr_full/rd_empty? nonblocking ???? ?? edge ?? ???
-      //      "?? ?"? ??? ?? ?? -> push/pop ??? ref_size? ???? ?? ??
-      //      ?, ????? ?? ??(? reset ?? ?) DUT ????? X? ? ???? skip ----
       if (!$isunknown(rd_empty) && (ref_size == 0) !== rd_empty) begin
         sb_fifo_errors = sb_fifo_errors + 1;
         $display("[SB-FIFO][%0t] EMPTY mismatch: ref_size=%0d rd_empty=%0b", $time, ref_size, rd_empty);
@@ -212,11 +208,11 @@ module tb_high_speed_daq_controller;
   end
 
   // =========================================================================
-  // "Assertions" ??: always ?? + if/$display (A1~A10)
+  // Replace "Assertions": always block + if/$display (A1~A10)
   // =========================================================================
   int err_A1, err_A2, err_A3, err_A4, err_A5, err_A6, err_A7, err_A8, err_A9, err_A10;
 
-  // ?? ??? ? ???
+  // For storing previous cycle values
   logic [$clog2(FIFO_DEPTH):0] count_prev;
   logic wr_full_prev, rd_empty_prev, wr_en_prev, rd_en_prev;
   logic channel_accept_prev;
@@ -226,7 +222,7 @@ module tb_high_speed_daq_controller;
   logic rst_n_prev;
 
   always @(posedge clk) begin
-    // ---- A1: full && empty ?? ?? ----
+    // ---- A1: full && empty cannot be used simultaneously ----
     if (rst_n) begin
       if (wr_full && rd_empty) begin
         err_A1 = err_A1 + 1;
@@ -239,7 +235,7 @@ module tb_high_speed_daq_controller;
         $display("[A2][%0t] FIFO count exceeds depth: %0d", $time, count);
       end
 
-      // ---- A3: ?? ??? (full && wr_en) ???, ?? ?? count==FIFO_DEPTH (overflow ??) ----
+      // ---- A3: If the previous clock was (full && wr_en), then this clock count == FIFO_DEPTH (prevent overflow) ----
       if (rst_n_prev && wr_full_prev && wr_en_prev) begin
         if (count != FIFO_DEPTH) begin
           err_A3 = err_A3 + 1;
@@ -247,8 +243,8 @@ module tb_high_speed_daq_controller;
         end
       end
 
-      // ---- A4: ?? ??? (empty && rd_en) ??? read? ????? ?.
-      //      ?, ??? valid write? ???? count? +1 ?? ? ?? ----
+      // ---- A4: If the previous clock was (empty && rd_en), the read should be ignored.
+      // However, if there was a valid write at the same time, it is normal for the count to be incremented by 1 ----
       if (rst_n_prev && rd_empty_prev && rd_en_prev) begin
         logic write_happened;
         write_happened = wr_en_prev && !wr_full_prev;
@@ -266,7 +262,7 @@ module tb_high_speed_daq_controller;
         end
       end
 
-      // ---- A5: simultaneous R/W (? ? ???? ??) -> count ?? ??? ? ----
+      // ---- A5: Simultaneous R/W (case where both were possible) -> Count must not change ----
       if (rst_n_prev && wr_en_prev && rd_en_prev && !wr_full_prev && !rd_empty_prev) begin
         if (count != count_prev) begin
           err_A5 = err_A5 + 1;
@@ -291,9 +287,17 @@ module tb_high_speed_daq_controller;
         err_A8 = err_A8 + 1;
         $display("[A8][%0t] channel_valid asserted while adc_busy", $time);
       end
+      
+    // ---- A9: count==0 on the first clock cycle immediately after reset ----
+    if (!rst_n_prev && rst_n) begin
+      if (count != 0) begin
+        err_A9 = err_A9 + 1;
+        $display("[A9][%0t] FIFO count not 0 right after reset: %0d", $time, count);
+      end
+    end
 
-      // ---- A10: RR ???? accept? ?? ??? rr_counter == rr_counter_prev+1 (mod N)
-      //      (DUT ??: rr_counter <= (rr_counter==N-1)?0:rr_counter+1, selected_channel?? ??) ----
+      // ---- A10: Next cycle accepted in RR mode rr_counter == rr_counter_prev+1 (mod N)
+      // (DUT logic: rr_counter <= (rr_counter==N-1)?0:rr_counter+1, independent of selected_channel) ----
       if (rst_n_prev && channel_accept_prev && arbiter_mode_prev == 2'b00) begin
         logic [CHANNEL_WIDTH-1:0] expected_rr;
         expected_rr = (rr_counter_prev == NUM_CHANNELS-1) ? 0 : rr_counter_prev + 1;
@@ -305,15 +309,7 @@ module tb_high_speed_daq_controller;
       end
     end
 
-    // ---- A9: reset ?? ? ??? count==0 ----
-    if (!rst_n_prev && rst_n) begin
-      if (count != 0) begin
-        err_A9 = err_A9 + 1;
-        $display("[A9][%0t] FIFO count not 0 right after reset: %0d", $time, count);
-      end
-    end
-
-    // ?? ? ??
+    Save previous value
     count_prev            <= count;
     wr_full_prev          <= wr_full;
     rd_empty_prev         <= rd_empty;
@@ -327,7 +323,7 @@ module tb_high_speed_daq_controller;
   end
 
   // =========================================================================
-  // Coverage ??: ?? ??? (? ???? 1? ?? ?? ??)
+  // Coverage Replacement: Manual Counter (whether each scenario occurs at least once)
   // =========================================================================
   int cov_mode_rr, cov_mode_prio, cov_mode_wgt, cov_mode_dyn;
   int cov_mode_transitions [0:15]; // 4x4 = 16?? ??
@@ -374,7 +370,7 @@ module tb_high_speed_daq_controller;
   end
 
   // =========================================================================
-  // Stimulus (constrained-random) - $urandom_range ? ??
+  // Stimulus (constrained-random) - only use $urandom_range
   // =========================================================================
   task setup_weights();
     for (int i = 0; i < 4; i++) channel_weight[i] = 8'd2; // ECG
@@ -434,7 +430,7 @@ module tb_high_speed_daq_controller;
     err_A1=0; err_A2=0; err_A3=0; err_A4=0; err_A5=0;
     err_A6=0; err_A7=0; err_A8=0; err_A9=0; err_A10=0;
 
-    // -------- 1. Reset ? ?? ?? ???? --------
+    //-------- 1. Input Scenario During Reset --------
     rst_n = 1;
     @(posedge clk);
     rst_n = 0;
@@ -443,7 +439,7 @@ module tb_high_speed_daq_controller;
     rst_n = 1;
     repeat (2) @(posedge clk);
 
-    // -------- 2. ? arbiter mode? ?? ????? --------
+    //-------- 2. Random Simulation for Each Arbiter Mode --------
     for (int m = 0; m < 4; m++) begin
       arbiter_mode = m[1:0];
       repeat (200) begin
@@ -453,14 +449,14 @@ module tb_high_speed_daq_controller;
       end
     end
 
-    // -------- 3. ?? ?? ?? request --------
+    //-------- 3. Simultaneous requests from all channels --------
     repeat (50) begin
       drive_all_request();
       channel_accept = channel_valid;
       @(posedge clk);
     end
 
-    // -------- 4. Arbitration mode ?? (??) --------
+    // -------- 4. Switch Arbitration Mode (Random) --------
     for (int i = 0; i < 40; i++) begin
       arbiter_mode = $urandom_range(0,3);
       drive_random_ready();
@@ -468,21 +464,20 @@ module tb_high_speed_daq_controller;
       @(posedge clk);
     end
 
-    // -------- 4b. Arbitration mode ?? (16?? ?? ?? ??, exhaustive) --------
-    // cov_mode_transitions[prev*4 + curr] ? 16/16 ??? ??
+    // -------- 4b. Switching Arbitration Mode (Iterating through all 16 combinations, exhaustive) --------
+    // To fill cov_mode_transitions[prev*4 + curr] to 16/16
     for (int prev_m = 0; prev_m < 4; prev_m++) begin
       arbiter_mode = prev_m[1:0];
       drive_random_ready();
       channel_accept = channel_valid;
-      @(posedge clk); // prev_m? ? ?? ???? arbiter_mode_prev? ????? ?
+      @(posedge clk); //Hold prev_m for one clock cycle to sample to arbiter_mode_prev
 
       for (int curr_m = 0; curr_m < 4; curr_m++) begin
         arbiter_mode = curr_m[1:0];
         drive_random_ready();
         channel_accept = channel_valid;
-        @(posedge clk); // (prev_m -> curr_m) ??? ? ???? ????
+        @(posedge clk);
 
-        // ?? curr_m? ?? ?? prev_m?? ???? ?? prev_m->curr_m ??? ??
         arbiter_mode = prev_m[1:0];
         drive_random_ready();
         channel_accept = channel_valid;
@@ -490,7 +485,7 @@ module tb_high_speed_daq_controller;
       end
     end
 
-    // -------- 5. FIFO: simultaneous read/write ?? ?? --------
+    // -------- 5. FIFO: simultaneous read/write --------
     channel_accept = 0;
     repeat (200) begin
       drive_fifo_random();
@@ -508,7 +503,6 @@ module tb_high_speed_daq_controller;
     @(posedge clk);
     drive_fifo_underflow();
 
-    // -------- ?? ?? --------
     $display("==============================================");
     $display("Arbiter scoreboard: checks=%0d errors=%0d", sb_arb_checks, sb_arb_errors);
     $display("FIFO   scoreboard: checks=%0d errors=%0d", sb_fifo_checks, sb_fifo_errors);
