@@ -1,10 +1,10 @@
 // =============================================================================
 // tb_arbiter.sv
-// configurable_arbiter 모듈 단위 검증
-//  - Directed test: arbitration mode 전환(RR/Priority/Weighted/Dynamic),
-//                    reset 중 입력 발생, 모든 채널 동시 request
-//  - SVA: selected_channel validity, mode-specific invariant, reset 동작
-//  - Functional coverage: 4가지 mode, 전 채널 동시 요청, mode 전환
+// verify configurable_arbiter
+//  - Directed test: switching arbitration mode (RR/Priority/Weighted/Dynamic),
+//                    input case during the reset, request all channels in the same time
+//  - SVA: selected_channel validity, mode-specific invariant, reset
+//  - Functional coverage: 4 mode, request all channels in the same time, switching mode
 // =============================================================================
 `timescale 1ns/1ps
 
@@ -50,7 +50,7 @@ module tb_configurable_arbiter;
     // SVA
     // =========================================================================
 
-    // A1: selected_channel은 항상 0..NUM_CHANNELS-1 범위 (CHANNEL_WIDTH로 자동 보장되지만 명시)
+    // A1: selected_channel is always int the 0..NUM_CHANNELS-1 range
     property p_selected_channel_range;
         @(posedge clk) disable iff (!rst_n)
         selected_channel < NUM_CHANNELS;
@@ -58,7 +58,7 @@ module tb_configurable_arbiter;
     assert property (p_selected_channel_range)
         else $error("[SVA-A1][%0t] selected_channel out of range: %0d", $time, selected_channel);
 
-    // A2: channel_valid=1이면 해당 채널은 enable && ready 상태여야 함
+    // A2: channel_valid=1, must be enable && ready
     property p_valid_implies_enabled_ready;
         @(posedge clk) disable iff (!rst_n)
         channel_valid |-> (channel_enable[selected_channel] && channel_ready[selected_channel]);
@@ -67,7 +67,7 @@ module tb_configurable_arbiter;
         else $error("[SVA-A2][%0t] channel_valid asserted for disabled/not-ready channel %0d (enable=%b ready=%b)",
                      $time, selected_channel, channel_enable[selected_channel], channel_ready[selected_channel]);
 
-    // A3: adc_busy=1이면 channel_valid=0 (새 변환 시작 안 함)
+    // A3: adc_busy=1, channel_valid=0
     property p_no_valid_while_busy;
         @(posedge clk) disable iff (!rst_n)
         adc_busy |-> !channel_valid;
@@ -75,7 +75,7 @@ module tb_configurable_arbiter;
     assert property (p_no_valid_while_busy)
         else $error("[SVA-A3][%0t] channel_valid asserted while adc_busy=1", $time);
 
-    // A4: 어떤 채널도 enable/ready가 아니면 channel_valid=0
+    // A4: either enable/ready, channel_valid=0
     property p_no_valid_if_none_ready;
         @(posedge clk) disable iff (!rst_n)
         (|(channel_enable & channel_ready) == 1'b0) |-> !channel_valid;
@@ -83,14 +83,14 @@ module tb_configurable_arbiter;
     assert property (p_no_valid_if_none_ready)
         else $error("[SVA-A4][%0t] channel_valid asserted but no channel is enable&&ready", $time);
 
-    // A5: reset 직후 rr_counter==0 (내부 신호 접근)
+    // A5: after reset, rr_counter==0
     property p_reset_rr_counter;
         @(posedge clk) (!rst_n) |=> (dut.rr_counter == 0);
     endproperty
     assert property (p_reset_rr_counter)
         else $error("[SVA-A5][%0t] rr_counter not reset to 0: %0d", $time, dut.rr_counter);
 
-    // A6: reset 직후 모든 weight_accumulator==0
+    // A6: after reset, ALL weight_accumulator==0
     property p_reset_weight_acc;
         @(posedge clk) (!rst_n) |=> (dut.weight_accumulator[0] == 0 &&
                                        dut.weight_accumulator[NUM_CHANNELS-1] == 0);
@@ -98,7 +98,7 @@ module tb_configurable_arbiter;
     assert property (p_reset_weight_acc)
         else $error("[SVA-A6][%0t] weight_accumulator not reset to 0", $time);
 
-    // A7: Round-Robin 모드에서 channel_accept 시 rr_counter는 (이전+1)%N 또는 wrap
+        // A7: In the Round-Robin mode, if channel_accept,  rr_counter is  (before+1)%N || wrap
     property p_rr_counter_increments;
         @(posedge clk) disable iff (!rst_n)
         (channel_accept && arbiter_mode == 2'b00 && $past(rst_n)) |=>
@@ -108,7 +108,7 @@ module tb_configurable_arbiter;
         else $error("[SVA-A7][%0t] rr_counter did not increment correctly: rr_counter=%0d past=%0d",
                      $time, dut.rr_counter, $past(dut.rr_counter));
 
-    // A8: Dynamic 모드(2'b11)에서 urgent 채널이 있으면, 선택된 채널은 반드시 urgent 채널 중 하나
+        // A8: In Dynamic mode(2'b11), if urgent, selected channel must be one of the urgent channel
     property p_dynamic_urgent_priority;
         @(posedge clk) disable iff (!rst_n)
         (arbiter_mode == 2'b11 && channel_valid &&
@@ -119,15 +119,7 @@ module tb_configurable_arbiter;
         else $error("[SVA-A8][%0t] Dynamic mode: urgent channel exists but selected_channel=%0d is not urgent",
                      $time, selected_channel);
 
-    // A9: Priority 모드에서 선택된 채널의 priority는, enable&&ready인 다른 모든 채널의
-    //     priority보다 작지 않아야 함 (최댓값 선택)
-    //
-    // NOTE: SVA 본문에서 매번 함수를 호출해 max를 계산하면, 함수 평가 시점과
-    // selected_channel/channel_valid가 참조하는 입력 스냅샷 사이에 evaluation
-    // region 차이로 인한 race가 발생할 수 있다(둘 다 "같은 클럭"의 조합 결과여야
-    // 하지만 시뮬레이터 내부에서 별도 시점에 샘플링됨).
-    // 이를 피하기 위해, max_priority_now를 매 클럭 always_comb으로 한 번만
-    // 계산해 두고 SVA에서는 그 값만 참조한다.
+        // A9: In Priority mode, priority of selected channel must be greater than other channels priority in enable&&ready status(choosing max value)
     logic [3:0] max_priority_now;
     always_comb begin
         max_priority_now = 0;
@@ -189,15 +181,15 @@ module tb_configurable_arbiter;
 
     task automatic init_priorities_weights();
         for (int i = 0; i < NUM_CHANNELS; i++) begin
-            channel_priority[i] = i;          // 채널번호=priority (서로 다른 값)
+            channel_priority[i] = i;          // channel num =priority
             channel_weight[i]   = (i < 4) ? 2 : 1; // ECG:2, EEG/EMG:1
         end
     endtask
 
-    // accept pulse 생성: channel_valid면 1클럭 accept
+    // generate accept pulse: channel_valid, accept  1 clk
     task automatic run_cycles_with_accept(int n);
         repeat (n) begin
-            channel_accept = channel_valid;
+            channel_accept = channel_valid; 
             @(posedge clk);
         end
         channel_accept = 0;
@@ -218,9 +210,9 @@ module tb_configurable_arbiter;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 1: Reset 중 입력 발생
-        //  - reset 도중 channel_enable/ready/urgent/accept 모두 asserted
-        //  - reset 해제 후 rr_counter, weight_accumulator가 0으로 시작하는지 SVA(A5,A6)가 체크
+        //Scenario 1: Input encountered during Reset 
+        // - channel_enable/ready/urgent/accept all asserted during reset 
+        // - SVA (A5, A6) checks if rr_counter, weight_accumulator starts with 0 after resetting
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 1: inputs asserted during reset");
         set_all_channels(1'b1, 1'b1, 1'b1);
@@ -239,8 +231,8 @@ module tb_configurable_arbiter;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 2: 모든 채널이 동시에 request (all-channel contention)
-        //  - 4가지 모드 각각에서 전 채널 enable&&ready
+        // Scenario 2: All channels request simultaneously (all-channel contention)
+        // - Enable all channels and make ready in each of the 4 modes
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 2: all-channel simultaneous request");
         for (int m = 0; m < 4; m++) begin
@@ -255,7 +247,7 @@ module tb_configurable_arbiter;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 3: arbitration mode 전환 (모든 mode 조합 순회)
+        // Scenario 3: Switch arbitration mode (iterate through all mode combinations)
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 3: arbitration mode transitions");
         set_all_channels(1'b1, 1'b1, 1'b0);
@@ -270,14 +262,14 @@ module tb_configurable_arbiter;
         $display("[TB-ARB] Scenario3 PASS: all 16 mode-transition combinations exercised");
 
         // -----------------------------------------------------------------
-        // Scenario 4: Dynamic mode - urgent 채널 우선권 확인
+        // Scenario 4: Dynamic mode - urgent Check channel priority
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 4: Dynamic mode urgent priority");
         arbiter_mode = 2'b11;
         set_all_channels(1'b1, 1'b1, 1'b0);
         channel_urgent = 8'h00;
         run_cycles_with_accept(5);
-        // 채널 5에만 urgent 설정
+        // set only channel 5 as an urgent
         channel_urgent = 8'b0010_0000;
         @(posedge clk);
         if (channel_valid && selected_channel !== 5)
@@ -292,7 +284,7 @@ module tb_configurable_arbiter;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 5: adc_busy 동안 channel_valid==0 유지
+        // Scenario 5: Maintain channel_valid==0 during adc_busy
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 5: adc_busy blocks new selection");
         arbiter_mode = 2'b00;
@@ -307,7 +299,7 @@ module tb_configurable_arbiter;
         @(posedge clk);
 
         // -----------------------------------------------------------------
-        // Scenario 6: Constrained-random mode/enable/ready/urgent 조합
+        // Scenario 6: Constrained-random mode/enable/ready/urgent
         // -----------------------------------------------------------------
         $display("[TB-ARB] Scenario 6: constrained-random stimulus");
         for (int i = 0; i < 300; i++) begin
