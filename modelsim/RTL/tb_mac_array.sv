@@ -53,11 +53,11 @@ module tb_mac_array;
     integer out_file;
 
     initial begin
-	$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/test_input.hex",  test_input);
-	$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/test_weight.hex", test_weight);
-	$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/golden.hex",      golden);
+		$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/test_input.hex",  test_input); //local direction
+		$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/test_weight.hex", test_weight); //local direction
+		$readmemh("C:/intelFPGA_lite/18.1/HSDAQ/golden.hex",      golden); //local direction
 
-        out_file = $fopen("C:/intelFPGA_lite/18.1/HSDAQ/rtl_out.hex", "w");
+		out_file = $fopen("C:/intelFPGA_lite/18.1/HSDAQ/rtl_out.hex", "w"); //local direction
 
         rst_n = 0;
         valid_in = 0;
