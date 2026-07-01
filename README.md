@@ -14,6 +14,8 @@ A multi-channel biosignal acquisition controller implemented in SystemVerilog, d
 | Output Interface | SPI (bidirectional, 1 MHz) |
 | System Clock | 100 MHz |
 | FIFO Depth | 16 entries, 2-level watermark |
+| MAC Array | 8×4 channel-parallel dot product, INT12×INT8→INT32 |
+| Alert | `mac_alert` pulse when anomaly score > `mac_threshold` |
 | Simulation Tool | Questa Sim |
 
 ---
@@ -116,6 +118,48 @@ Statement Coverage:     91.91%  (untouched branches are error paths never trigge
 Untouched branches (scoreboard mismatch, FAIL outputs) are intentionally unreachable in a bug-free design.
 
 ---
+## MAC Array — Real-time Anomaly Detection
+
+### Overview
+
+A channel-parallel MAC array is integrated directly into the acquisition pipeline to compute per-channel anomaly scores in real time, without involving the external MCU.
+
+| Item | Detail |
+|---|---|
+| Input bit-width | 12 bit (unsigned) — matches `ADC_WIDTH` exactly, no conversion |
+| Weight bit-width | 8 bit (signed) — pre-trained anomaly pattern coefficients |
+| Output bit-width | 32 bit (signed) — per-channel anomaly score |
+| Array size | 8 × 4 (= `NUM_CHANNELS` × `WINDOW_SIZE`) |
+| Operation | Per-channel independent dot product (not systolic, not full matrix multiply) |
+| Latency | 6 cycles from `valid_in` to `valid_out` (1 clear + 4 accumulate + 1 registered) |
+
+### Why not systolic array
+
+Each channel's dot product is fully independent — no data is shared between channels, and the pre-trained weights are fixed (no weight reuse across different input windows in the systolic sense). A systolic array's PE-to-PE forwarding only pays off when one weight must reach many PEs over time, which does not apply here. A parallel MAC bank achieves the same result with lower wiring complexity and lower latency.
+
+The FIFO datapath and SPI interface are completely unchanged. The MAC array taps the FIFO write path passively — every time a new ADC sample is written to the FIFO, the corresponding channel's sliding window is updated. When a channel's window fills to 4 samples, `mac_valid_in` is asserted and the array computes a fresh dot product for all 8 channels simultaneously.
+
+### New ports
+
+| Port | Direction | Width | Description |
+|---|---|---|---|
+| `mac_weight` | input | `[8][4]` signed 8-bit | Anomaly pattern weights (held fixed, e.g. loaded via SPI config write at startup) |
+| `mac_threshold` | input | 32-bit | Alert threshold for signed anomaly score comparison |
+| `mac_alert` | output | 1-bit | 1-cycle pulse when any channel's score exceeds `mac_threshold` |
+
+### Verification
+
+Python golden model (`golden_model.py`) generates 1000 random `(input, weight)` pairs, computes INT32 dot products as reference, and writes them to `golden.hex`. The RTL testbench reads the same hex files, drives the MAC array, and compares results:
+
+```
+MAC array test: checks=8000 mismatches=0
+MAC ARRAY TEST PASSED (1000/1000 test vectors, 0 mismatches)
+```
+
+**Key design decisions verified by overflow analysis** (see `golden_model.py`):
+- Max single product: 4,095 × 127 = 520,065
+- Max accumulated (4 taps): 2,080,260
+- INT32 range: ±2,147,483,648 → **INT32 accumulator safe** 
 
 ## Running the Simulation
 
