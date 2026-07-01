@@ -33,7 +33,15 @@ module high_speed_daq_controller #(
 
     input  logic test_mode,
     input  logic [NUM_CHANNELS-1:0] test_channel_ready,
-    input  logic test_adc_busy
+    input  logic test_adc_busy,
+
+    // MAC array interface
+    // mac_weight: pre-trained anomaly pattern coefficients, loaded once
+    // (e.g. via SPI config write) and held fixed during normal operation.
+    input  logic signed [7:0] mac_weight [0:NUM_CHANNELS-1][0:3],
+    output logic              mac_alert,   // 1-cycle pulse when any channel's
+                                           // anomaly score exceeds mac_threshold
+    input  logic [31:0]       mac_threshold, // alert threshold (signed comparison)
 );
 
 // =============================================================================
@@ -483,6 +491,101 @@ performance_monitor #(.NUM_CHANNELS(NUM_CHANNELS)) perf_mon (
 );
 
 assign adc_channel_sel = selected_channel;
+
+// =============================================================================
+// MAC Array — per-channel anomaly score
+// =============================================================================
+// Connection strategy (FIFO write tap):
+// Send the FIFO write signal (fifo_wr_en + adc_data + locked_channel)
+// to mac_array simultaneously. The FIFO logic is not modified at all.
+// Sliding window buffer:
+// Store the most recent WINDOW_SIZE (=4) samples for each channel.
+// Shift the buffer for the corresponding channel for every fifo_wr_en pulse, and
+// when the sample_count per channel reaches WINDOW_SIZE, apply valid_in to mac_array.
+// =============================================================================
+
+localparam MAC_WINDOW = 4;
+
+// Per-channel sliding window buffer
+logic [ADC_WIDTH-1:0] win_buf [0:NUM_CHANNELS-1][0:MAC_WINDOW-1];
+logic [2:0]           win_cnt [0:NUM_CHANNELS-1]; // 0..MAC_WINDOW, saturates at MAC_WINDOW
+
+// MAC array input/output wires
+logic [ADC_WIDTH-1:0]        mac_input_fm [0:NUM_CHANNELS-1][0:MAC_WINDOW-1];
+logic signed [7:0]            mac_w        [0:NUM_CHANNELS-1][0:MAC_WINDOW-1];
+logic                         mac_valid_in;
+logic signed [31:0]           mac_result   [0:NUM_CHANNELS-1];
+logic                         mac_valid_out;
+
+// Sliding window update: on each FIFO write, push new sample into
+// locked_channel's window buffer and check if window is full.
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        mac_valid_in <= 1'b0;
+        for (int c = 0; c < NUM_CHANNELS; c++) begin
+            win_cnt[c] <= '0;
+            for (int k = 0; k < MAC_WINDOW; k++) win_buf[c][k] <= '0;
+        end
+    end else begin
+        mac_valid_in <= 1'b0; // default: no new window
+
+        if (fifo_wr_en) begin
+            // Shift window: oldest sample drops off, new sample enters at [MAC_WINDOW-1]
+            for (int k = 0; k < MAC_WINDOW-1; k++)
+                win_buf[locked_channel][k] <= win_buf[locked_channel][k+1];
+            win_buf[locked_channel][MAC_WINDOW-1] <= adc_data;
+
+            // Track how many valid samples this channel has accumulated
+            if (win_cnt[locked_channel] < MAC_WINDOW)
+                win_cnt[locked_channel] <= win_cnt[locked_channel] + 1;
+
+            // Once window is full, present it to the mac_array
+            if (win_cnt[locked_channel] == MAC_WINDOW-1 ||
+                win_cnt[locked_channel] == MAC_WINDOW) begin
+                // Latch the full window (after shift, all 4 slots are valid)
+                for (int c2 = 0; c2 < NUM_CHANNELS; c2++)
+                    for (int k = 0; k < MAC_WINDOW; k++)
+                        mac_input_fm[c2][k] <= win_buf[c2][k];
+                // Weight comes directly from the port (held fixed externally)
+                for (int c2 = 0; c2 < NUM_CHANNELS; c2++)
+                    for (int k = 0; k < MAC_WINDOW; k++)
+                        mac_w[c2][k] <= mac_weight[c2][k];
+                mac_valid_in <= 1'b1;
+            end
+        end
+    end
+end
+
+mac_array #(
+    .NUM_CHANNELS(NUM_CHANNELS),
+    .WINDOW_SIZE(MAC_WINDOW),
+    .IN_WIDTH(ADC_WIDTH),
+    .W_WIDTH(8),
+    .OUT_WIDTH(32)
+) mac_inst (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .input_fm (mac_input_fm),
+    .weight   (mac_w),
+    .valid_in (mac_valid_in),
+    .result   (mac_result),
+    .valid_out(mac_valid_out)
+);
+
+// Alert: assert for 1 cycle when any channel's anomaly score exceeds threshold
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        mac_alert <= 1'b0;
+    end else begin
+        mac_alert <= 1'b0;
+        if (mac_valid_out) begin
+            for (int c = 0; c < NUM_CHANNELS; c++) begin
+                if ($signed(mac_result[c]) > $signed(mac_threshold))
+                    mac_alert <= 1'b1;
+            end
+        end
+    end
+end
 
 endmodule
 
