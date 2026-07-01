@@ -48,6 +48,11 @@ module tb_top_spi;
   logic test_mode;
   logic [NUM_CHANNELS-1:0] test_channel_ready, test_adc_busy_unused;
 
+  // MAC array interface signals
+  logic signed [7:0] mac_weight_tb [0:NUM_CHANNELS-1][0:3];
+  logic [31:0]       mac_threshold_tb;
+  logic              mac_alert_tb;
+
   high_speed_daq_controller #(
     .NUM_CHANNELS(NUM_CHANNELS), .ADC_WIDTH(ADC_WIDTH), .FIFO_DEPTH(16)
   ) dut (
@@ -56,6 +61,9 @@ module tb_top_spi;
     .adc_start_conv(adc_start_conv), .adc_channel_sel(adc_channel_sel),
     .adc_conv_done(adc_conv_done), .adc_data(adc_data), .adc_busy(adc_busy),
     .interrupt(interrupt), .status_leds(status_leds),
+    .mac_weight(mac_weight_tb),
+    .mac_threshold(mac_threshold_tb),
+    .mac_alert(mac_alert_tb),
     .test_mode(test_mode), .test_channel_ready(test_channel_ready), .test_adc_busy(1'b0)
   );
 
@@ -93,7 +101,28 @@ module tb_top_spi;
   // ---------------------------------------------------------------------
   assign test_mode = 1'b0;
   assign test_channel_ready = '0;
+  
+  // ---------------------------------------------------------------------
+  // MAC array
+  // Set MAC array initial values
+  // mac_weight: Use the same value (10) for all channels/taps (for simple verification)
+  // mac_threshold: Set to half the maximum dot product value (4095 * 10 * 4 = 163800)
+  // → No alert is triggered for normal signals (adc_counter=0..15)
+  // Can check if an alert is triggered as the counter increases
+  // ---------------------------------------------------------------------
+  initial begin
+    mac_threshold_tb = 32'd50000;
+    for (int c = 0; c < NUM_CHANNELS; c++)
+      for (int k = 0; k < 4; k++)
+        mac_weight_tb[c][k] = 8'd10;
+  end
 
+  always @(posedge clk) begin
+    if (mac_alert_tb)
+      $display("[MAC-ALERT][%0t] mac_alert asserted (threshold=%0d)",
+               $time, mac_threshold_tb);
+  end
+  
   // =========================================================================
   // SPI Driver Tasks
   //   command byte: [7]=R/W (1=read,0=write), [6:0]=reserved(0)
